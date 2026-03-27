@@ -13,4 +13,5 @@ class akun extends Model
 
     // seluruh kolom dapat dimodifikasi
     protected $guarded = [];
+    
 }
