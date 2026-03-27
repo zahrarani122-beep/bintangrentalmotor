@@ -15,3 +15,4 @@ class akun extends Model
     protected $guarded = [];
     
 }
+
