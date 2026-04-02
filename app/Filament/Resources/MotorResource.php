@@ -99,8 +99,7 @@ class MotorResource extends Resource
 
             TextColumn::make('sewa_perhari')
                 ->label('Harga')
-                ->formatStateUsing(fn (string|int|null $state): string => rupiah($state))
-                ->extraAttributes(['class' => 'text-right']) // Tambahkan kelas CSS untuk rata kanan
+                ->formatStateUsing(fn ($state) => 'Rp ' . number_format($state,0,',','.'))
                 ->sortable()
 
         ])
