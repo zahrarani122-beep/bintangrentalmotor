@@ -48,8 +48,8 @@ class PelangganResource extends Resource
                     ->placeholder('Masukkan No Telepon'),
 
                 // Foto KTP/SIM
-                FileUpload::make('foto_KTP/SIM')
-                    ->directory('KTP/SIM')
+                FileUpload::make('foto_KTP_SIM')
+                    ->directory('foto_KTP_SIM')
                     ->image()
                     ->required(),
 
@@ -73,9 +73,8 @@ class PelangganResource extends Resource
 
                 TextColumn::make('no_telepon'),
 
-                ImageColumn::make('foto_identitas')
-                    ->label('Foto')
-                    ->circular(),
+                ImageColumn::make('foto_KTP_SIM')
+                    ->disk('public'),
 
                 TextColumn::make('alamat')
                     ->limit(30),
@@ -89,7 +88,7 @@ class PelangganResource extends Resource
             ->actions([
                 Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\DeleteAction::make(), 
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
