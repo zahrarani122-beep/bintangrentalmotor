@@ -73,7 +73,7 @@ class PelangganResource extends Resource
 
                 TextColumn::make('no_telepon'),
 
-                ImageColumn::make('foto_identitas')
+                ImageColumn::make('foto_KTP_SIM')
                     ->disk('public'),
 
                 TextColumn::make('alamat')
