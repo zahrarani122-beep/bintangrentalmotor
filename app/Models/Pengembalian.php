@@ -17,11 +17,15 @@ class Pengembalian extends Model
         'id_sewa',
         'tgl_pengembalian',
         'denda',
+        'detail_denda',
+        'total',
         'keterangan',
     ];
 
     protected $casts = [
         'tgl_pengembalian' => 'date',
+        'detail_denda' => 'array',
+        'total' => 'decimal:2',
     ];
 
     public function penyewaan()

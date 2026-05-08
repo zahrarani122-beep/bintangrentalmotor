@@ -18,11 +18,22 @@ return new class extends Migration
 
             $table->date('tgl_pengembalian');
 
+            // Pilihan utama: ada denda atau tidak
             $table->enum('denda', [
-                'Keterlambatan Pengembalian',
-                'Kehilangan',
-                'Kerusakan'
-            ])->nullable();
+                'Ada Denda',
+                'Tidak Ada Denda'
+            ])->default('Tidak Ada Denda');
+
+            // Untuk menyimpan banyak denda
+            // Contoh:
+            // [
+            //   {"jenis_denda": "Kehilangan", "nama_denda": "Helm", "nominal": 50000},
+            //   {"jenis_denda": "Kerusakan", "nama_denda": "Motor", "nominal": 150000}
+            // ]
+            $table->json('detail_denda')->nullable();
+
+            // Total seluruh nominal denda
+            $table->decimal('total', 12, 2)->default(0);
 
             $table->text('keterangan')->nullable();
 

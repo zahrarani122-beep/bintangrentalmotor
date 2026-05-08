@@ -7,6 +7,8 @@ use App\Models\Pengembalian;
 use App\Models\Penyewaan;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -29,11 +31,15 @@ class PengembalianResource extends Resource
             ->schema([
                 Forms\Components\Section::make('Data Pengembalian')
                     ->schema([
+                        Forms\Components\TextInput::make('id_pengembalian')
+                            ->label('ID Pengembalian')
+                            ->disabled()
+                            ->dehydrated(false)
+                            ->visibleOn('edit'),
+
                         Forms\Components\Select::make('id_sewa')
                             ->label('Transaksi Penyewaan')
                             ->options(function (?Pengembalian $record) {
-                                // Ambil id_sewa yang sudah punya data pengembalian
-                                // supaya satu transaksi tidak dikembalikan dua kali
                                 $idSewaSudahDikembalikan = Pengembalian::query()
                                     ->when($record, function ($query) use ($record) {
                                         $query->where('id_pengembalian', '!=', $record->id_pengembalian);
@@ -58,21 +64,96 @@ class PengembalianResource extends Resource
                         Forms\Components\Select::make('denda')
                             ->label('Denda')
                             ->options([
-                                'Keterlambatan Pengembalian' => 'Keterlambatan Pengembalian',
-                                'Kehilangan' => 'Kehilangan',
-                                'Kerusakan' => 'Kerusakan',
+                                'Tidak Ada Denda' => 'Tidak Ada Denda',
+                                'Ada Denda' => 'Ada Denda',
                             ])
-                            ->placeholder('Tidak ada denda')
-                            ->nullable()
-                            ->native(false),
+                            ->default('Tidak Ada Denda')
+                            ->live()
+                            ->required()
+                            ->native(false)
+                            ->afterStateUpdated(function (Set $set, $state) {
+                                if ($state === 'Tidak Ada Denda') {
+                                    $set('detail_denda', []);
+                                    $set('total', 0);
+                                }
+                            }),
+                    ])
+                    ->columns(2),
+
+                Forms\Components\Section::make('Detail Denda')
+                    ->schema([
+                        Forms\Components\Repeater::make('detail_denda')
+                            ->label('Daftar Denda')
+                            ->schema([
+                                Forms\Components\Select::make('jenis_denda')
+                                    ->label('Jenis Denda')
+                                    ->options([
+                                        'Kehilangan' => 'Kehilangan',
+                                        'Kerusakan' => 'Kerusakan',
+                                    ])
+                                    ->required()
+                                    ->native(false),
+
+                                Forms\Components\Select::make('nama_denda')
+                                    ->label('Nama Denda')
+                                    ->options([
+                                        'Motor' => 'Motor',
+                                        'Kunci' => 'Kunci',
+                                        'STNK' => 'STNK',
+                                        'Helm' => 'Helm',
+                                    ])
+                                    ->required()
+                                    ->native(false),
+
+                                Forms\Components\TextInput::make('nominal')
+                                    ->label('Nominal')
+                                    ->numeric()
+                                    ->prefix('Rp')
+                                    ->default(0)
+                                    ->required()
+                                    ->live()
+                                    ->afterStateUpdated(function (Get $get, Set $set) {
+                                        $items = $get('../../detail_denda') ?? [];
+
+                                        $total = collect($items)
+                                            ->sum(fn ($item) => (float) ($item['nominal'] ?? 0));
+
+                                        $set('../../total', $total);
+                                    }),
+                            ])
+                            ->columns(3)
+                            ->addActionLabel('Tambah Denda')
+                            ->reorderable(false)
+                            ->collapsible()
+                            ->live()
+                            ->afterStateUpdated(function (Get $get, Set $set) {
+                                $items = $get('detail_denda') ?? [];
+
+                                $total = collect($items)
+                                    ->sum(fn ($item) => (float) ($item['nominal'] ?? 0));
+
+                                $set('total', $total);
+                            })
+                            ->visible(fn (Get $get) => $get('denda') === 'Ada Denda')
+                            ->required(fn (Get $get) => $get('denda') === 'Ada Denda'),
+
+                        Forms\Components\TextInput::make('total')
+                            ->label('Total Denda')
+                            ->prefix('Rp')
+                            ->numeric()
+                            ->default(0)
+                            ->disabled()
+                            ->dehydrated()
+                            ->visible(fn (Get $get) => $get('denda') === 'Ada Denda'),
 
                         Forms\Components\Textarea::make('keterangan')
                             ->label('Keterangan')
-                            ->placeholder('Contoh: Motor terlambat dikembalikan 2 hari / spion rusak / helm hilang')
+                            ->placeholder('Contoh: Helm hilang, spion motor rusak, STNK hilang, dan sebagainya')
                             ->nullable()
                             ->columnSpanFull(),
                     ])
-                    ->columns(2),
+                    ->columns(1)
+                    ->visible(fn (Get $get) => $get('denda') === 'Ada Denda'),
             ]);
     }
 
@@ -99,12 +180,15 @@ class PengembalianResource extends Resource
                     ->label('Denda')
                     ->badge()
                     ->color(fn (?string $state): string => match ($state) {
-                        'Keterlambatan Pengembalian' => 'warning',
-                        'Kehilangan' => 'danger',
-                        'Kerusakan' => 'danger',
+                        'Ada Denda' => 'danger',
+                        'Tidak Ada Denda' => 'success',
                         default => 'gray',
-                    })
-                    ->placeholder('Tidak ada'),
+                    }),
+
+                Tables\Columns\TextColumn::make('total')
+                    ->label('Total Denda')
+                    ->money('IDR')
+                    ->sortable(),
 
                 Tables\Columns\TextColumn::make('keterangan')
                     ->label('Keterangan')
@@ -123,9 +207,8 @@ class PengembalianResource extends Resource
                 Tables\Filters\SelectFilter::make('denda')
                     ->label('Filter Denda')
                     ->options([
-                        'Keterlambatan Pengembalian' => 'Keterlambatan Pengembalian',
-                        'Kehilangan' => 'Kehilangan',
-                        'Kerusakan' => 'Kerusakan',
+                        'Tidak Ada Denda' => 'Tidak Ada Denda',
+                        'Ada Denda' => 'Ada Denda',
                     ]),
             ])
             ->actions([
