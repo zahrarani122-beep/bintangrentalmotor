@@ -47,7 +47,7 @@ class PenyewaanMotor extends Model
         static::saving(function ($penyewaanMotor) {
 
             $penyewaanMotor->subtotal =
-                $penyewaanMotor->harga_sewa_perhari *
+                $penyewaanMotor->harga_sewa *
                 $penyewaanMotor->jml;
         });
     }
