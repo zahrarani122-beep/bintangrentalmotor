@@ -27,4 +27,10 @@ class Pelanggan extends Model
 
         return $noakhir;
     }
+    
+    public function penyewaan()
+    {
+        return $this->hasMany(Penyewaan::class,'pelanggan_id');
+    }
 }
+
