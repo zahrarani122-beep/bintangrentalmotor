@@ -15,7 +15,10 @@ class Penyewaan extends Model
     // nama tabel
     protected $table = 'penyewaan';
 
-    // guard
+    // primary key
+    protected $primaryKey = 'id_sewa';
+
+    // mass assignment
     protected $guarded = [];
 
     /**
@@ -51,10 +54,21 @@ class Penyewaan extends Model
      */
     public function pelanggan()
     {
-        return $this->belongsTo(Pelanggan::class, 'pelanggan_id');
+        return $this->belongsTo(
+            Pelanggan::class,
+            'pelanggan_id'
+        );
     }
+
+    /**
+     * Relasi ke tabel penyewaan_motor
+     */
     public function penyewaanMotor()
     {
-        return $this->hasMany(PenyewaanMotor::class,'id_sewa');
+        return $this->hasMany(
+            PenyewaanMotor::class,
+            'penyewaan_id', // FK di tabel penyewaan_motor
+            'id_sewa'       // PK tabel penyewaan
+        );
     }
 }

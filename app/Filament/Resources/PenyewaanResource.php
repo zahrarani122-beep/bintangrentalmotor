@@ -1,5 +1,7 @@
 <?php
 
+namespace App\Filament\Resources;
+
 use App\Filament\Resources\PenyewaanResource\Pages;
 use App\Models\Penyewaan;
 
@@ -126,17 +128,20 @@ class PenyewaanResource extends Resource
                                         ->required()
                                         ->disableOptionsWhenSelectedInSiblingRepeaterItems()
                                         ->reactive()
-                                        ->afterStateUpdated(function ($state, $set) {
+                                        ->afterStateUpdated(function ($state, $set, $get) {
 
-                                            $motor = Motor::find($state);
+    $motor = Motor::find($state);
 
-                                            $set(
-                                                'harga_sewa',
-                                                $motor
-                                                    ? $motor->harga_sewa_perhari
-                                                    : 0
-                                            );
-                                        }),
+    $harga = $motor
+        ? $motor->harga_sewa_perhari
+        : 0;
+
+    $jml = $get('jml') ?? 1;
+
+    $set('harga_sewa', $harga);
+
+    $set('subtotal', $harga * $jml);
+}),
 
                                     TextInput::make('harga_sewa')
                                         ->label('Harga Sewa / Hari')
@@ -145,10 +150,20 @@ class PenyewaanResource extends Resource
                                         ->dehydrated(),
 
                                     TextInput::make('jml')
-                                        ->label('Jumlah')
-                                        ->default(1)
-                                        ->numeric()
-                                        ->required(),
+                                    ->label('Jumlah')
+                                    ->default(1)
+                                    ->numeric()
+                                    ->required()
+                                    ->live()
+                                    ->afterStateUpdated(function ($state, $get, $set) {
+
+                                    $harga = $get('harga_sewa_perhari') ?? 0;
+
+                                    $set(
+                                    'subtotal',
+                                    $harga * $state
+                                    );
+                                }),
 
                                     DatePicker::make('tgl')
                                         ->label('Tanggal')

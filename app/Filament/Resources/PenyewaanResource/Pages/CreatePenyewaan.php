@@ -4,11 +4,9 @@ namespace App\Filament\Resources\PenyewaanResource\Pages;
 
 use App\Filament\Resources\PenyewaanResource;
 
-use Filament\Actions;
 use Filament\Resources\Pages\CreateRecord;
 
 // models
-use App\Models\Penyewaan;
 use App\Models\PenyewaanMotor;
 use App\Models\Motor;
 
@@ -20,41 +18,14 @@ class CreatePenyewaan extends CreateRecord
     protected static string $resource = PenyewaanResource::class;
 
     /**
-     * Sebelum create
+     * Setelah data berhasil disimpan
      */
-    protected function beforeCreate(): void
+    protected function afterCreate(): void
     {
-        //
-    }
+        // ambil data penyewaan yang baru disimpan
+        $penyewaan = $this->record;
 
-    /**
-     * Tombol action form
-     */
-    protected function getFormActions(): array
-    {
-        return [
-
-            Actions\Action::make('simpan')
-                ->label('Simpan Penyewaan')
-                ->color('success')
-                ->action(fn () => $this->simpanPenyewaan())
-                ->requiresConfirmation()
-                ->modalHeading('Konfirmasi Penyewaan')
-                ->modalDescription('Apakah data penyewaan sudah benar?')
-                ->modalButton('Ya, Simpan'),
-
-        ];
-    }
-
-    /**
-     * Simpan penyewaan
-     */
-    protected function simpanPenyewaan(): void
-    {
-        // ambil penyewaan terbaru
-        $penyewaan = $this->record ?? Penyewaan::latest()->first();
-
-        // ambil semua detail motor
+        // ambil detail motor
         $detailMotor = PenyewaanMotor::where(
             'penyewaan_id',
             $penyewaan->id_sewa
