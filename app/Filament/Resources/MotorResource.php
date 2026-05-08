@@ -10,7 +10,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 
-// tambahan seperti di BarangResource
+
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Select;
@@ -62,7 +62,7 @@ class MotorResource extends Resource
                     ->required(),
 
                 TextInput::make('harga_sewa_perhari')
-                    ->label('harga sewa')
+                    ->label('harga_sewa_perhari')
                     ->numeric()
                     ->required(),
 
@@ -97,7 +97,7 @@ class MotorResource extends Resource
                     'danger' => 'disewa',
                 ]),
 
-            TextColumn::make('sewa_perhari')
+            TextColumn::make('harga_sewa_perhari')
                 ->label('Harga')
                 ->formatStateUsing(fn (string|int|null $state): string => rupiah($state))
                 ->extraAttributes(['class' => 'text-right']) 

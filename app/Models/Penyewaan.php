@@ -71,4 +71,8 @@ class Penyewaan extends Model
             'id_sewa'       // PK tabel penyewaan
         );
     }
+    public function pengembalian()
+    {
+        return $this->hasOne(Pengembalian::class, 'id_sewa', 'id_sewa');
+    }
 }
