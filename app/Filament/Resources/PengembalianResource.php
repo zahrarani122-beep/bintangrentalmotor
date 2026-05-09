@@ -32,11 +32,7 @@ class PengembalianResource extends Resource
 
                 Forms\Components\Wizard::make([
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | STEP 1: DATA PENYEWAAN
-                    |--------------------------------------------------------------------------
-                    */
+                    //data penyewaan
                     Forms\Components\Wizard\Step::make('Data Penyewaan')
                         ->schema([
 
