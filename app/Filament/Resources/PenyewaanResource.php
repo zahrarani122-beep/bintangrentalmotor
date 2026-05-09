@@ -218,6 +218,7 @@ class PenyewaanResource extends Resource
                 Wizard\Step::make('Detail Sewa')
                     ->schema([
 
+    $set('harga_sewa_perhari', $harga);
                         Section::make('Data Pelanggan')
                             ->schema([
 
@@ -225,6 +226,11 @@ class PenyewaanResource extends Resource
                                     ->label('Nama Pelanggan')
                                     ->content(function (Get $get) {
 
+                                    TextInput::make('harga_sewa_perhari')
+                                        ->label('Harga Sewa / Hari')
+                                        ->numeric()
+                                        ->readonly()
+                                        ->dehydrated(),
                                         $pelanggan =
                                             Pelanggan::find(
                                                 $get('pelanggan_id')
