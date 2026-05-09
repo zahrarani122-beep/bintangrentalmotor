@@ -138,12 +138,12 @@ class PenyewaanResource extends Resource
 
     $jml = $get('jml') ?? 1;
 
-    $set('harga_sewa', $harga);
+    $set('harga_sewa_perhari', $harga);
 
     $set('subtotal', $harga * $jml);
 }),
 
-                                    TextInput::make('harga_sewa')
+                                    TextInput::make('harga_sewa_perhari')
                                         ->label('Harga Sewa / Hari')
                                         ->numeric()
                                         ->readonly()
