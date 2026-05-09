@@ -18,7 +18,7 @@ return new class extends Migration
 
             $table->date('tgl_pengembalian');
 
-            // Pilihan utama: ada denda atau tidak
+            // Pilihan : ada denda atau tidak
             $table->enum('denda', [
                 'Ada Denda',
                 'Tidak Ada Denda'
