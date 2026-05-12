@@ -6,6 +6,7 @@ use App\Filament\Resources\PengembalianResource;
 use App\Services\FonnteService;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class CreatePengembalian extends CreateRecord
 {
@@ -15,7 +16,6 @@ class CreatePengembalian extends CreateRecord
     {
         $pengembalian = $this->record;
 
-        // Ambil data penyewaan, pelanggan, dan motor
         $pengembalian->load('penyewaan.pelanggan', 'penyewaan.penyewaanMotor.motor');
 
         /*
@@ -26,32 +26,41 @@ class CreatePengembalian extends CreateRecord
         if ($pengembalian->penyewaan && $pengembalian->penyewaan->penyewaanMotor) {
             foreach ($pengembalian->penyewaan->penyewaanMotor as $detail) {
                 if ($detail->motor) {
-                    $detail->motor->update([
-                        'status' => 'tersedia',
-                    ]);
+                    $detail->motor->update(['status' => 'tersedia']);
                 }
             }
         }
 
         /*
         |--------------------------------------------------------------------------
-        | 2. Kirim WhatsApp notifikasi pengembalian
+        | 2. Generate PDF Invoice
         |--------------------------------------------------------------------------
         */
         $penyewaan = $pengembalian->penyewaan;
         $pelanggan = $penyewaan?->pelanggan;
 
+        $pdf      = Pdf::loadView('pdf.invoice', [
+            'pengembalian' => $pengembalian,
+            'penyewaan'    => $penyewaan,
+        ]);
+        $namaFile = 'invoice-' . ($penyewaan->no_faktur ?? $pengembalian->id_pengembalian) . '.pdf';
+        $path     = storage_path('app/public/' . $namaFile);
+        $pdf->save($path);
+        //$urlPdf   = config('app.url') . '/storage/' . $namaFile;
+        /*
+        |--------------------------------------------------------------------------
+        | 3. Kirim WhatsApp notifikasi + link PDF
+        |--------------------------------------------------------------------------
+        */
         if (!$pelanggan) {
             Notification::make()
                 ->title('Notifikasi tidak dikirim')
                 ->body('Data pelanggan tidak ditemukan.')
                 ->warning()
                 ->send();
-
             return;
         }
 
-        // Sesuaikan dengan nama kolom nomor HP di tabel pelanggan kamu
         $nomorTujuan = $pelanggan->no_hp
             ?? $pelanggan->no_telp
             ?? $pelanggan->no_telepon
@@ -64,33 +73,38 @@ class CreatePengembalian extends CreateRecord
                 ->body('Nomor HP pelanggan belum tersedia.')
                 ->warning()
                 ->send();
-
             return;
         }
 
-        $namaPelanggan = $pelanggan->nama_pelanggan ?? 'Pelanggan';
-        $noFaktur = $penyewaan->no_faktur ?? '-';
+        $namaPelanggan   = $pelanggan->nama_pelanggan ?? 'Pelanggan';
+        $noFaktur        = $penyewaan->no_faktur ?? '-';
         $tglPengembalian = $pengembalian->tgl_pengembalian ?? '-';
-        $statusDenda = $pengembalian->denda ?? 'Tidak Ada Denda';
-        $totalDenda = $pengembalian->total ?? 0;
-        $keterangan = $pengembalian->keterangan ?? '-';
+        $statusDenda     = $pengembalian->denda ?? 'Tidak Ada Denda';
+        $totalSewa       = number_format((float) $penyewaan->total_harga, 0, ',', '.');
+        $totalDenda      = number_format((float) ($pengembalian->total ?? 0), 0, ',', '.');
+        $grandTotal      = number_format((float) $penyewaan->total_harga + (float) ($pengembalian->total ?? 0), 0, ',', '.');
+        $keterangan      = $pengembalian->keterangan ?? '-';
 
-        $pesan = "Halo {$namaPelanggan},\n\n";
+        $pesan  = "Halo {$namaPelanggan},\n\n";
         $pesan .= "Pengembalian motor Anda di Bintang Rental Motor telah berhasil diproses.\n\n";
         $pesan .= "No Faktur: {$noFaktur}\n";
         $pesan .= "Tanggal Pengembalian: {$tglPengembalian}\n";
         $pesan .= "Status Denda: {$statusDenda}\n";
-        $pesan .= "Total Denda: Rp" . number_format((float) $totalDenda, 0, ',', '.') . "\n";
+        $pesan .= "Total Sewa: Rp{$totalSewa}\n";
+        $pesan .= "Total Denda: Rp{$totalDenda}\n";
+        $pesan .= "Grand Total: Rp{$grandTotal}\n";
         $pesan .= "Keterangan: {$keterangan}\n\n";
+        $pesan .= "Invoice PDF: {$urlPdf}\n\n";
         $pesan .= "Terima kasih telah menggunakan layanan Bintang Rental Motor.";
 
         $fonnteService = app(FonnteService::class);
         $proses = $fonnteService->sendMessage($nomorTujuan, $pesan);
+        $fonnteService->sendFile($nomorTujuan, $urlPdf, "Invoice Pengembalian - {$noFaktur}");
 
         if (($proses['status'] ?? false) == true) {
             Notification::make()
                 ->title('Notifikasi WhatsApp terkirim')
-                ->body('Pesan pengembalian berhasil dikirim ke pelanggan.')
+                ->body('Pesan + invoice PDF berhasil dikirim ke pelanggan.')
                 ->success()
                 ->send();
         } else {

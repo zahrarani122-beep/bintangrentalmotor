@@ -88,7 +88,8 @@ class MotorResource extends Resource
                 ->label('Plat Nomor'),
 
             ImageColumn::make('foto_motor')
-                ->label('Foto Motor'),
+                ->label('Foto Motor')
+                ->disk('public'),
 
             TextColumn::make('status')
                 ->badge()

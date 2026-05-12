@@ -4,49 +4,56 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-
-// tambahan DB
 use Illuminate\Support\Facades\DB;
 
 class Penyewaan extends Model
 {
     use HasFactory;
 
-    // nama tabel
-    protected $table = 'penyewaan';
-
-    // primary key
+    protected $table      = 'penyewaan';
     protected $primaryKey = 'id_sewa';
+    public    $incrementing = true;
+    protected $keyType    = 'int';
 
-    // mass assignment
-    protected $guarded = [];
+    // ✅ Hanya kolom ini yang disimpan ke DB
+    protected $fillable = [
+        'pelanggan_id',
+        'no_faktur',
+        'tgl_sewa',
+        'tgl_kembali',
+        'metode',
+        'bukti_bayar',
+        'tgl_bayar',
+    ];
 
     /**
      * Generate kode faktur otomatis
      */
     public static function getKodeFaktur()
     {
-        // query kode faktur terakhir
         $sql = "SELECT IFNULL(MAX(no_faktur), 'S-0000000') as no_faktur 
                 FROM penyewaan";
 
         $kodefaktur = DB::select($sql);
 
-        // ambil hasil
         foreach ($kodefaktur as $kdfk) {
             $kd = $kdfk->no_faktur;
         }
 
-        // ambil 7 digit terakhir
-        $noawal = substr($kd, -7);
-
-        // tambah 1
+        $noawal  = substr($kd, -7);
         $noakhir = $noawal + 1;
-
-        // format ulang
         $noakhir = 'S-' . str_pad($noakhir, 7, "0", STR_PAD_LEFT);
 
         return $noakhir;
+    }
+
+    /**
+     * Total sewa dihitung dinamis dari relasi
+     * Tidak perlu kolom total_harga di DB
+     */
+    public function getTotalHargaAttribute(): float
+    {
+        return $this->penyewaanMotor->sum('subtotal');
     }
 
     /**
@@ -54,10 +61,7 @@ class Penyewaan extends Model
      */
     public function pelanggan()
     {
-        return $this->belongsTo(
-            Pelanggan::class,
-            'pelanggan_id'
-        );
+        return $this->belongsTo(Pelanggan::class, 'pelanggan_id');
     }
 
     /**
@@ -67,10 +71,14 @@ class Penyewaan extends Model
     {
         return $this->hasMany(
             PenyewaanMotor::class,
-            'penyewaan_id', // FK di tabel penyewaan_motor
-            'id_sewa'       // PK tabel penyewaan
+            'penyewaan_id',
+            'id_sewa'
         );
     }
+
+    /**
+     * Relasi ke pengembalian
+     */
     public function pengembalian()
     {
         return $this->hasOne(Pengembalian::class, 'id_sewa', 'id_sewa');

@@ -9,10 +9,7 @@ class PenyewaanMotor extends Model
 {
     use HasFactory;
 
-    // nama tabel
-    protected $table = 'penyewaan_motor';
-
-    // mass assignment
+    protected $table   = 'penyewaan_motor';
     protected $guarded = [];
 
     /**
@@ -22,8 +19,8 @@ class PenyewaanMotor extends Model
     {
         return $this->belongsTo(
             Penyewaan::class,
-            'penyewaan_id', // foreign key di tabel penyewaan_motor
-            'id_sewa'       // primary key di tabel penyewaan
+            'penyewaan_id',
+            'id_sewa'
         );
     }
 
@@ -40,14 +37,13 @@ class PenyewaanMotor extends Model
     }
 
     /**
-     * Hitung subtotal otomatis
+     * Hitung subtotal otomatis saat saving
      */
     protected static function booted()
     {
         static::saving(function ($penyewaanMotor) {
-
             $penyewaanMotor->subtotal =
-                $penyewaanMotor->harga_sewa *
+                $penyewaanMotor->harga_sewa_perhari *  // ✅ fix nama kolom
                 $penyewaanMotor->jml;
         });
     }
