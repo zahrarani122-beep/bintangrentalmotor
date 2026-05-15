@@ -14,5 +14,10 @@ class akun extends Model
     // seluruh kolom dapat dimodifikasi
     protected $guarded = [];
     
+    // Model Akun — satu akun HANYA PUNYA SATU pencatatan biaya
+    public function pencatatanBiaya()
+{
+    return $this->hasOne(PencatatanBiaya::class, 'akun_id', 'id');
+}
 }
 
