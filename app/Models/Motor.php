@@ -34,4 +34,8 @@ class Motor extends Model
     {
         $this->attributes['harga_sewa_perhari'] = str_replace('.', '', $value);
     }
+     public function penyewaanMotor()
+    {
+        return $this->hasMany(PenyewaanMotor::class,'motor_id');
+    }
 }
