@@ -25,6 +25,8 @@ class MotorResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-truck';
     protected static ?string $navigationLabel = 'Motor';
+    protected static ?string $navigationGroup = 'Master Data';
+    protected static ?int $navigationSort = 2;
     protected static ?string $pluralModelLabel = 'Data Motor';
 
     public static function form(Form $form): Form

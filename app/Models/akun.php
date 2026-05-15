@@ -1,23 +1,21 @@
 <?php
 
-namespace App\Models; 
+namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
-
-class akun extends Model
+class Akun extends Model
 {
     use HasFactory;
-    protected $table = 'akun'; //nama tabel eksplisit
 
-    // seluruh kolom dapat dimodifikasi
+    protected $table = 'akun';
+
     protected $guarded = [];
-    
-    // Model Akun — satu akun HANYA PUNYA SATU pencatatan biaya
-    public function pencatatanBiaya()
-{
-    return $this->hasOne(PencatatanBiaya::class, 'akun_id', 'id');
-}
-}
 
+    public function pencatatanBiaya(): HasMany
+    {
+        return $this->hasMany(PencatatanBiaya::class, 'akun_id', 'id');
+    }
+}
