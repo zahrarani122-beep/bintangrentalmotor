@@ -46,6 +46,11 @@ class PelangganResource extends Resource
                     ->tel()
                     ->required()
                     ->placeholder('Masukkan No Telepon'),
+                
+                 TextInput::make('email')
+                ->email()
+                ->nullable()
+                ->label('Email'),
 
                 // Foto KTP/SIM
                 FileUpload::make('foto_KTP_SIM')
@@ -72,6 +77,8 @@ class PelangganResource extends Resource
                     ->searchable(),
 
                 TextColumn::make('no_telepon'),
+
+                TextColumn::make('email'),
 
                 ImageColumn::make('foto_KTP_SIM')
                     ->disk('public'),

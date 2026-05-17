@@ -17,14 +17,16 @@ class Penyewaan extends Model
 
     // ✅ Hanya kolom ini yang disimpan ke DB
     protected $fillable = [
-        'pelanggan_id',
-        'no_faktur',
-        'tgl_sewa',
-        'tgl_kembali',
-        'metode',
-        'bukti_bayar',
-        'tgl_bayar',
-    ];
+    'pelanggan_id',
+    'no_faktur',
+    'tgl_sewa',
+    'tgl_kembali',
+    'total_harga',
+    'metode',
+    'bukti_bayar',
+    'tgl_bayar',
+    'status_bayar',
+];
 
     /**
      * Generate kode faktur otomatis
@@ -83,4 +85,9 @@ class Penyewaan extends Model
     {
         return $this->hasOne(Pengembalian::class, 'id_sewa', 'id_sewa');
     }
+
+    public function pembayaran()
+{
+    return $this->hasOne(Pembayaran::class, 'penyewaan_id', 'id_sewa');
+}
 }
