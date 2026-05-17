@@ -38,6 +38,7 @@ class PenyewaanResource extends Resource
     protected static ?string $navigationLabel = 'Penyewaan';
 
     protected static ?string $navigationGroup = 'Transaksi';
+    protected static ?int $navigationSort = 1;
 
     // =========================================================================
     // FORM
