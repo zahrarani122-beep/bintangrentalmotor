@@ -20,7 +20,7 @@ class CreatePengembalian extends CreateRecord
             'penyewaan.penyewaanMotor.motor',
         ]);
 
-        //status motor setelah pengembalian
+        // Update status motor setelah pengembalian
         if ($pengembalian->penyewaan && $pengembalian->penyewaan->penyewaanMotor) {
             foreach ($pengembalian->penyewaan->penyewaanMotor as $detail) {
                 if ($detail->motor) {
@@ -30,10 +30,8 @@ class CreatePengembalian extends CreateRecord
                 }
             }
         }
-    }
 
-        //notif pengembalian
-
+        // Notifikasi pengembalian
         $penyewaan = $pengembalian->penyewaan;
         $pelanggan = $penyewaan?->pelanggan;
 
@@ -63,16 +61,6 @@ class CreatePengembalian extends CreateRecord
 
             return;
         }
-    } else {
-        $pesan .= "Detail Denda : Tidak ada denda\n";
-    }
-
-    $pesan .= "\nTotal Denda : Rp" . number_format((float)$totalDenda, 0, ',', '.') . "\n";
-    $pesan .= "Keterangan : {$keterangan}\n\n";
-    $pesan .= "Terima kasih telah menggunakan layanan Bintang Rental Motor.";
-
-    // 3. Kirim WhatsApp
-    $fonnteService = app(FonnteService::class);
 
         $namaPelanggan = $pelanggan->nama_pelanggan ?? 'Pelanggan';
         $noFaktur = $penyewaan->no_faktur ?? '-';
@@ -87,8 +75,8 @@ class CreatePengembalian extends CreateRecord
         }
 
         $tglPengembalian = $pengembalian->tgl_pengembalian
-        ? \Carbon\Carbon::parse($pengembalian->tgl_pengembalian)->format('Y-m-d')
-        : '-';
+            ? \Carbon\Carbon::parse($pengembalian->tgl_pengembalian)->format('Y-m-d')
+            : '-';
 
         $waktuPengembalian = now('Asia/Jakarta')->format('H:i:s') . ' WIB';
 
@@ -102,7 +90,7 @@ class CreatePengembalian extends CreateRecord
             $detailDenda = json_decode($detailDenda, true) ?? [];
         }
 
-        //susunan isi whatsapp
+        // Susunan isi WhatsApp
         $pesan = "Halo {$namaPelanggan},\n\n";
         $pesan .= "Pengembalian motor Anda di Bintang Rental Motor telah berhasil diproses.\n\n";
 
@@ -134,8 +122,7 @@ class CreatePengembalian extends CreateRecord
         $pesan .= "Keterangan : {$keterangan}\n\n";
         $pesan .= "Terima kasih telah menggunakan layanan Bintang Rental Motor.";
 
-        //kirim pesan melalui fonnte
-        
+        // Kirim pesan melalui Fonnte
         $fonnteService = app(FonnteService::class);
         $proses = $fonnteService->sendMessage($nomorTujuan, $pesan);
 
@@ -155,5 +142,4 @@ class CreatePengembalian extends CreateRecord
             ->danger()
             ->send();
     }
-}
 }

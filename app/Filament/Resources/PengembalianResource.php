@@ -21,7 +21,6 @@ class PengembalianResource extends Resource
     protected static ?string $navigationLabel = 'Pengembalian';
     protected static ?string $pluralModelLabel = 'Pengembalian';
     protected static ?string $navigationGroup = 'Transaksi';
-    protected static ?int $navigationSort = 2;
 
     protected static ?int $navigationSort = 2;
 
