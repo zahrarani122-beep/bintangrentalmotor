@@ -108,4 +108,21 @@ class FonnteService
 
         return $nomor;
     }
+
+    /**
+     * Fungsi untuk mengirim file (PDF, gambar, dll) via URL
+     */
+    public function sendFile($target, $url, $caption = '')
+    {
+        $response = Http::withHeaders([
+            'Authorization' => $this->token,
+        ])->asForm()->post($this->baseUrl, [
+            'target'      => $target,
+            'url'         => $url,
+            'caption'     => $caption,
+            'countryCode' => '62',
+        ]);
+
+        return $response->json();
+    }
 }

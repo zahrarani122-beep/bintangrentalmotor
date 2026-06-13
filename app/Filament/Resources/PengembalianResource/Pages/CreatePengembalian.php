@@ -30,6 +30,7 @@ class CreatePengembalian extends CreateRecord
                 }
             }
         }
+    }
 
         //notif pengembalian
 
@@ -62,6 +63,16 @@ class CreatePengembalian extends CreateRecord
 
             return;
         }
+    } else {
+        $pesan .= "Detail Denda : Tidak ada denda\n";
+    }
+
+    $pesan .= "\nTotal Denda : Rp" . number_format((float)$totalDenda, 0, ',', '.') . "\n";
+    $pesan .= "Keterangan : {$keterangan}\n\n";
+    $pesan .= "Terima kasih telah menggunakan layanan Bintang Rental Motor.";
+
+    // 3. Kirim WhatsApp
+    $fonnteService = app(FonnteService::class);
 
         $namaPelanggan = $pelanggan->nama_pelanggan ?? 'Pelanggan';
         $noFaktur = $penyewaan->no_faktur ?? '-';
@@ -144,4 +155,5 @@ class CreatePengembalian extends CreateRecord
             ->danger()
             ->send();
     }
+}
 }
