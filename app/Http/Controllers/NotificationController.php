@@ -145,9 +145,7 @@ class NotificationController extends Controller
         );
     }
 
-    /**
-     * Notifikasi pengembalian motor.
-     */
+    // KATA KATA UNTUK PENGEMBALIAN
     public function kirimNotifikasiPengembalian($id_pengembalian)
     {
         $pengembalian = Pengembalian::with('penyewaan.pelanggan')
