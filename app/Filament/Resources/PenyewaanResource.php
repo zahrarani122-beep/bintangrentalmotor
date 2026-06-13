@@ -332,11 +332,11 @@ class PenyewaanResource extends Resource
                                         ->label('Transaction ID')
                                         ->default(fn () => uniqid()),
 
-                                    DateTimePicker::make('transaction_time')
+                                    DatePicker::make('transaction_time')
                                         ->label('Transaction Time')
                                         ->default(now()),
 
-                                    DateTimePicker::make('settlement_time')
+                                    DatePicker::make('settlement_time')
                                         ->label('Settlement Time')
                                         ->default(now()),
 
