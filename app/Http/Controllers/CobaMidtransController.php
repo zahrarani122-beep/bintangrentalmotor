@@ -9,129 +9,162 @@ use App\Models\PenyewaanMotor;
 
 class CobaMidtransController extends Controller
 {
-    /**
-     * Generate Snap Token untuk penyewaan tertentu (dipanggil dari CreatePenyewaan).
-     */
-    public function getSnapTokenBySewa(Penyewaan $penyewaan)
+    // =========================================================================
+    // PRIVATE HELPERS
+    // =========================================================================
+
+    private function setupMidtrans(): void
     {
-        $penyewaan->load(['pelanggan', 'penyewaanMotor.motor']);
-        
-        // ── Setup Midtrans ────────────────────────────────────────────────
         \Midtrans\Config::$serverKey    = config('midtrans.server_key');
         \Midtrans\Config::$isProduction = config('midtrans.is_production', false);
         \Midtrans\Config::$isSanitized  = true;
         \Midtrans\Config::$is3ds        = true;
+    }
 
-        // ── Cek apakah snap token sudah ada & belum expired di Midtrans ──
-        $pembayaran = Pembayaran::where('penyewaan_id', $penyewaan->id_sewa)->first();
+    private function checkMidtransStatus(string $orderId): ?array
+    {
+        $url = 'https://api.sandbox.midtrans.com/v2/' . $orderId . '/status';
 
-        if ($pembayaran && $pembayaran->transaction_id) {
-            // Cek status order di Midtrans
-            $orderId = $pembayaran->order_id;
-            $url     = 'https://api.sandbox.midtrans.com/v2/' . $orderId . '/status';
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL,           $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_HTTPAUTH,       CURLAUTH_BASIC);
+        curl_setopt($ch, CURLOPT_USERPWD,        config('midtrans.server_key') . ':');
+        $output = curl_exec($ch);
+        curl_close($ch);
 
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-            curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
-            curl_setopt($ch, CURLOPT_USERPWD, config('midtrans.server_key') . ':');
-            $output     = curl_exec($ch);
-            curl_close($ch);
-            $outputJson = json_decode($output, true);
+        return json_decode($output, true) ?? null;
+    }
 
-            // Jika belum expired → pakai snap token yang sudah ada
-            if (
-                ! in_array($outputJson['transaction_status'] ?? '', ['expire', 'cancel', 'deny'])
-                && ($outputJson['status_code'] ?? '') !== '404'
-            ) {
-                return [
-                    'success'    => true,
-                    'snap_token' => $pembayaran->transaction_id,
-                ];
-            }
+    private function resetPembayaran(Pembayaran $pembayaran): void
+    {
+        $pembayaran->update([
+            'status_code'      => null,
+            'transaction_time' => null,
+            'total_harga'      => 0,
+            'transaction_id'   => null,
+        ]);
+    }
 
-            // Expired/cancel → reset pembayaran agar bisa generate baru
-            $pembayaran->update([
-                'status_code'      => null,
-                'transaction_time' => null,
-                'total_harga'      => 0,
-                'transaction_id'   => null,
-            ]);
+    private function extractNoFaktur(string $orderId): string
+    {
+        $parts = explode('-', $orderId);
+        return ($parts[0] ?? '') . '-' . ($parts[1] ?? '');
+    }
+
+    private function resolveExistingToken(Pembayaran $pembayaran): array
+    {
+        if (! $pembayaran->transaction_id) {
+            return ['action' => 'generate'];
         }
 
-        // ── Buat order_id baru format: no_faktur-YmdHis ──────────────────
-        $orderId = $penyewaan->no_faktur . '-' . date('YmdHis');
+        $status            = $this->checkMidtransStatus($pembayaran->order_id);
+        $transactionStatus = $status['transaction_status'] ?? '';
+        $statusCode        = $status['status_code']        ?? '';
 
-        // ── Susun item details dari penyewaan_motor ───────────────────────
-        $itemDetails = [];
-        foreach ($penyewaan->penyewaanMotor as $d) {
-            $itemDetails[] = [
-                'id'       => (string) $d->id,
-                'price'    => (int) $d->subtotal,
-                'quantity' => 1,
-                'name'     => ($d->motor->nama_motor ?? 'Motor')
-                              . ' '
-                              . number_format((float) $d->jml, 0) . ' hari',
-            ];
+        if (in_array($transactionStatus, ['settlement', 'capture'])) {
+            Penyewaan::where('no_faktur', $this->extractNoFaktur($pembayaran->order_id))
+                ->update(['status_bayar' => 'lunas']);
+
+            return ['action' => 'paid'];
         }
 
-        // ── Customer details dari relasi pelanggan ────────────────────────
-        $pelanggan = $penyewaan->pelanggan;
-        $customerDetails = [
-            'first_name' => $pelanggan?->nama_pelanggan ?? 'Pelanggan',
-            'email'      => $pelanggan?->email          ?? 'pelanggan@sewa.id',
-            'phone'      => $pelanggan?->no_telepon     ?? '08000000000',
+        if (in_array($transactionStatus, ['expire', 'cancel', 'deny']) || $statusCode === '404') {
+            $this->resetPembayaran($pembayaran);
+            return ['action' => 'reset'];
+        }
+
+        return [
+            'action'     => 'reuse',
+            'snap_token' => $pembayaran->transaction_id,
         ];
+    }
 
-        // ── Params Midtrans ───────────────────────────────────────────────
-        $params = [
+    private function savePembayaran(Penyewaan $penyewaan, string $orderId, string $snapToken): void
+    {
+        Pembayaran::updateOrCreate(
+            ['penyewaan_id' => $penyewaan->id_sewa],
+            [
+                'tgl_bayar'        => now()->toDateString(),
+                'metode'           => 'midtrans',
+                'transaction_time' => now(),
+                'total_harga'      => $penyewaan->total_harga,
+                'order_id'         => $orderId,
+                'payment_type'     => 'pg',
+                'status_code'      => '201',
+                'status_message'   => 'Pending payment',
+                'transaction_id'   => $snapToken,
+            ]
+        );
+    }
+
+    private function buildSnapParams(Penyewaan $penyewaan, string $orderId): array
+    {
+        $itemDetails = $penyewaan->penyewaanMotor->map(fn ($d) => [
+            'id'       => (string) $d->id,
+            'price'    => (int) $d->subtotal,
+            'quantity' => 1,
+            'name'     => ($d->motor->nama_motor ?? 'Motor') . ' ' . (int) $d->jml . ' hari',
+        ])->toArray();
+
+        $pelanggan = $penyewaan->pelanggan;
+
+        return [
             'transaction_details' => [
                 'order_id'     => $orderId,
                 'gross_amount' => (int) $penyewaan->total_harga,
             ],
             'item_details'     => $itemDetails,
-            'customer_details' => $customerDetails,
+            'customer_details' => [
+                'first_name' => $pelanggan?->nama_pelanggan ?? 'Pelanggan',
+                'email'      => $pelanggan?->email          ?? 'pelanggan@sewa.id',
+                'phone'      => $pelanggan?->no_telepon     ?? '08000000000',
+            ],
             'expiry' => [
                 'start_time' => date('Y-m-d H:i:s O'),
                 'unit'       => 'minutes',
-                'duration'   => 60,   // expired dalam 60 menit
+                'duration'   => 60,
             ],
         ];
+    }
+
+    // =========================================================================
+    // PUBLIC METHODS
+    // =========================================================================
+
+    public function getSnapTokenBySewa(Penyewaan $penyewaan): array
+    {
+        $penyewaan->load(['pelanggan', 'penyewaanMotor.motor']);
+        $this->setupMidtrans();
+
+        $pembayaran = Pembayaran::where('penyewaan_id', $penyewaan->id_sewa)->first();
+
+        if ($pembayaran) {
+            $resolved = $this->resolveExistingToken($pembayaran);
+
+            if ($resolved['action'] === 'paid') {
+                return ['success' => false, 'message' => 'Transaksi ini sudah terbayar.'];
+            }
+
+            if ($resolved['action'] === 'reuse') {
+                return ['success' => true, 'snap_token' => $resolved['snap_token']];
+            }
+        }
+
+        $orderId = $penyewaan->no_faktur . '-' . date('YmdHis');
+        $params  = $this->buildSnapParams($penyewaan, $orderId);
 
         try {
             $snapToken = \Midtrans\Snap::getSnapToken($params);
+            $this->savePembayaran($penyewaan, $orderId, $snapToken);
 
-            // Simpan / update ke tabel pembayaran
-            Pembayaran::updateOrCreate(
-                ['penyewaan_id' => $penyewaan->id_sewa],
-                [
-                    'tgl_bayar'        => now()->toDateString(),
-                    'metode' => 'midtrans',
-                    'transaction_time' => now(),
-                    'total_harga'      => $penyewaan->total_harga,
-                    'order_id'         => $orderId,
-                    'payment_type'     => 'pg',
-                    'status_code'      => '201',   // pending
-                    'status_message'   => 'Pending payment',
-                    'transaction_id'   => $snapToken,  // simpan snap token di sini
-                ]
-            );
-
-            return [
-                'success'    => true,
-                'snap_token' => $snapToken,
-            ];
+            return ['success' => true, 'snap_token' => $snapToken];
 
         } catch (\Exception $e) {
-            throw $e; // re-throw untuk ditangkap di CreatePenyewaan
+            throw $e;
         }
     }
 
-    /**
-     * Generate Snap Token untuk penyewaan tertentu.
-     * Dipanggil via fetch() dari Step 3 wizard Filament (PenyewaanResource).
-     * POST /midtrans-sewa/snap-token
-     */
     public function getSnapToken(Request $request)
     {
         $noFaktur = $request->input('no_faktur');
@@ -140,112 +173,43 @@ class CobaMidtransController extends Controller
             return response()->json(['success' => false, 'message' => 'No faktur tidak ditemukan.'], 422);
         }
 
-        $penyewaan = Penyewaan::with(['pelanggan', 'penyewaanMotor.motor'])->where('no_faktur', $noFaktur)->first();
+        $penyewaan = Penyewaan::with(['pelanggan', 'penyewaanMotor.motor'])
+            ->where('no_faktur', $noFaktur)
+            ->first();
 
         if (! $penyewaan) {
             return response()->json(['success' => false, 'message' => 'Data penyewaan tidak ditemukan.'], 404);
         }
 
-        // ── Setup Midtrans ────────────────────────────────────────────────
-        \Midtrans\Config::$serverKey    = config('midtrans.server_key');
-        \Midtrans\Config::$isProduction = config('midtrans.is_production', false);
-        \Midtrans\Config::$isSanitized  = true;
-        \Midtrans\Config::$is3ds        = true;
+        $this->setupMidtrans();
 
-        // ── Cek apakah snap token sudah ada & belum expired di Midtrans ──
         $pembayaran = Pembayaran::where('penyewaan_id', $penyewaan->id_sewa)->first();
 
-        if ($pembayaran && $pembayaran->transaction_id) {
-            // Cek status order di Midtrans
-            $orderId = $pembayaran->order_id;
-            $url     = 'https://api.sandbox.midtrans.com/v2/' . $orderId . '/status';
+        if ($pembayaran) {
+            $resolved = $this->resolveExistingToken($pembayaran);
 
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-            curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
-            curl_setopt($ch, CURLOPT_USERPWD, config('midtrans.server_key') . ':');
-            $output     = curl_exec($ch);
-            curl_close($ch);
-            $outputJson = json_decode($output, true);
-
-            // Jika belum expired → pakai snap token yang sudah ada
-            if (
-                ! in_array($outputJson['transaction_status'] ?? '', ['expire', 'cancel', 'deny'])
-                && ($outputJson['status_code'] ?? '') !== '404'
-            ) {
+            if ($resolved['action'] === 'paid') {
                 return response()->json([
-                    'success'    => true,
-                    'snap_token' => $pembayaran->transaction_id,
-                ]);
+                    'success' => false,
+                    'message' => 'Transaksi ini sudah terbayar.',
+                    'paid'    => true,
+                ], 422);
             }
 
-            // Expired/cancel → reset pembayaran agar bisa generate baru
-            $pembayaran->update([
-                'status_code'      => null,
-                'transaction_time' => null,
-                'total_harga'      => 0,
-                'transaction_id'   => null,
-            ]);
+            if ($resolved['action'] === 'reuse') {
+                return response()->json([
+                    'success'    => true,
+                    'snap_token' => $resolved['snap_token'],
+                ]);
+            }
         }
 
-        // ── Buat order_id baru format: no_faktur-YmdHis ──────────────────
         $orderId = $noFaktur . '-' . date('YmdHis');
-
-        // ── Susun item details dari penyewaan_motor ───────────────────────
-        $itemDetails = [];
-        foreach ($penyewaan->penyewaanMotor as $d) {
-            $itemDetails[] = [
-                'id'       => (string) $d->id,
-                'price'    => (int) $d->subtotal,
-                'quantity' => 1,
-                'name'     => ($d->nama_motor ?? 'Motor')
-                              . ' '
-                              . number_format((float) $d->jml, 0) . ' hari',
-            ];
-        }
-
-        // ── Customer details dari relasi pelanggan ────────────────────────
-        $pelanggan = $penyewaan->pelanggan;
-        $customerDetails = [
-            'first_name' => $pelanggan?->nama_pelanggan ?? 'Pelanggan',
-            'email'      => $pelanggan?->email          ?? 'pelanggan@sewa.id',
-            'phone'      => $pelanggan?->no_telepon     ?? '08000000000',
-        ];
-
-        // ── Params Midtrans ───────────────────────────────────────────────
-        $params = [
-            'transaction_details' => [
-                'order_id'     => $orderId,
-                'gross_amount' => (int) $penyewaan->total_harga,
-            ],
-            'item_details'     => $itemDetails,
-            'customer_details' => $customerDetails,
-            'expiry' => [
-                'start_time' => date('Y-m-d H:i:s O'),
-                'unit'       => 'minutes',
-                'duration'   => 60,   // expired dalam 60 menit
-            ],
-        ];
+        $params  = $this->buildSnapParams($penyewaan, $orderId);
 
         try {
             $snapToken = \Midtrans\Snap::getSnapToken($params);
-
-            // Simpan / update ke tabel pembayaran
-            Pembayaran::updateOrCreate(
-                ['penyewaan_id' => $penyewaan->id_sewa],
-                [
-                    'tgl_bayar'        => now()->toDateString(),
-                    'metode' => 'midtrans',
-                    'transaction_time' => now(),
-                    'total_harga'      => $penyewaan->total_harga,
-                    'order_id'         => $orderId,
-                    'payment_type'     => 'pg',
-                    'status_code'      => '201',   // pending
-                    'status_message'   => 'Pending payment',
-                    'transaction_id'   => $snapToken,  // simpan snap token di sini
-                ]
-            );
+            $this->savePembayaran($penyewaan, $orderId, $snapToken);
 
             return response()->json([
                 'success'    => true,
@@ -260,84 +224,56 @@ class CobaMidtransController extends Controller
         }
     }
 
-    /**
-     * Webhook callback dari Midtrans (Notification URL).
-     * Midtrans akan POST ke /midtrans-sewa/callback setiap ada perubahan status.
-     * POST /midtrans-sewa/callback  (di routes/api.php, bebas CSRF)
-     */
     public function handleCallback(Request $request)
     {
         \Midtrans\Config::$serverKey    = config('midtrans.server_key');
         \Midtrans\Config::$isProduction = config('midtrans.is_production', false);
 
-        $serverKey = config('midtrans.server_key');
-
-        // 1. Validasi signature key
         $hashed = hash('sha512',
             $request->order_id
             . $request->status_code
             . $request->gross_amount
-            . $serverKey
+            . config('midtrans.server_key')
         );
 
         if ($hashed !== $request->signature_key) {
-            \Log::warning('Midtrans Callback Sewa: Signature Key tidak valid untuk Order ID: ' . $request->order_id);
+            \Log::warning('Midtrans Callback: Signature tidak valid. Order ID: ' . $request->order_id);
             return response()->json(['message' => 'Invalid signature'], 403);
         }
 
-        // 2. Ambil data dari request
-        $orderId         = $request->order_id;
-        $status          = $request->transaction_status;
-        $statusCode      = $request->status_code;
-        $transactionTime = $request->transaction_time;
-        $settlementTime  = $request->settlement_time ?? null;
-        $statusMessage   = $request->status_message  ?? null;
-        $merchantId      = $request->merchant_id     ?? null;
+        $orderId           = $request->order_id;
+        $transactionStatus = $request->transaction_status;
+        $statusCode        = $request->status_code;
+        $noFaktur          = $this->extractNoFaktur($orderId);
 
-        // 3. Potong order_id untuk dapatkan no_faktur asli
-        // format: SEW-0000001-20260511123456 → SEW-0000001
-        $parts    = explode('-', $orderId);
-        $noFaktur = $parts[0] . '-' . $parts[1]; // SEW-0000001
-
-        // 4. Update tabel pembayaran
         Pembayaran::where('order_id', $orderId)->update([
-            'status_code'      => $statusCode    ?? null,
-            'transaction_time' => $transactionTime ?? null,
-            'settlement_time'  => $settlementTime  ?? null,
-            'status_message'   => $statusMessage   ?? null,
-            'merchant_id'      => $merchantId      ?? null,
+            'status_code'      => $statusCode                  ?? null,
+            'transaction_time' => $request->transaction_time   ?? null,
+            'settlement_time'  => $request->settlement_time    ?? null,
+            'status_message'   => $request->status_message     ?? null,
+            'merchant_id'      => $request->merchant_id        ?? null,
         ]);
 
-        // 5. Jika sudah settlement (terbayar) → update status_bayar penyewaan
         if ($statusCode === '200') {
             Penyewaan::where('no_faktur', $noFaktur)
                 ->update(['status_bayar' => 'lunas']);
         }
 
-        // 6. Jika expired/cancel/deny → reset pembayaran ke awal
-        if (in_array($status, ['expire', 'cancel', 'deny'])) {
-            Pembayaran::where('order_id', $orderId)->update([
-                'status_code'      => null,
-                'transaction_time' => null,
-                'total_harga'      => 0,
-                'transaction_id'   => null,
-            ]);
+        if (in_array($transactionStatus, ['expire', 'cancel', 'deny'])) {
+            $pembayaran = Pembayaran::where('order_id', $orderId)->first();
+            if ($pembayaran) {
+                $this->resetPembayaran($pembayaran);
+            }
         }
 
         return response()->json(['message' => 'OK']);
     }
 
-    /**
-     * Cek status pembayaran pending secara manual (auto-refresh).
-     * Dipanggil dari admin panel jika perlu sync manual.
-     * GET /midtrans-sewa/cek-status
-     */
     public function cekStatus()
     {
         \Midtrans\Config::$serverKey    = config('midtrans.server_key');
         \Midtrans\Config::$isProduction = config('midtrans.is_production', false);
 
-        // Ambil semua pembayaran via PG yang belum terbayar
         $pending = Pembayaran::whereIn('payment_type', ['pg', 'midtrans'])
             ->whereRaw("IFNULL(status_code, '0') <> '200'")
             ->orderBy('tgl_bayar', 'desc')
@@ -346,43 +282,28 @@ class CobaMidtransController extends Controller
         $updated = 0;
         $expired = 0;
 
-        foreach ($pending as $p) {
-            if (! $p->order_id) {
-                continue;
-            }
+        foreach ($pending as $pembayaran) {
+            if (! $pembayaran->order_id) continue;
 
-            $url = 'https://api.sandbox.midtrans.com/v2/' . $p->order_id . '/status';
-            $ch  = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-            curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
-            curl_setopt($ch, CURLOPT_USERPWD, config('midtrans.server_key') . ':');
-            $output     = curl_exec($ch);
-            curl_close($ch);
-            $out = json_decode($output, true);
+            $out               = $this->checkMidtransStatus($pembayaran->order_id);
+            $transactionStatus = $out['transaction_status'] ?? '';
+            $statusCode        = $out['status_code']        ?? '';
 
-            if (in_array($out['transaction_status'] ?? '', ['expire', 'cancel', 'deny'])) {
-                // Reset
-                $p->update([
-                    'status_code'      => null,
-                    'transaction_time' => null,
-                    'total_harga'      => 0,
-                    'transaction_id'   => null,
-                ]);
+            if (in_array($transactionStatus, ['expire', 'cancel', 'deny'])) {
+                $this->resetPembayaran($pembayaran);
                 $expired++;
-            } elseif (($out['status_code'] ?? '') === '200') {
-                // Update terbayar
-                $p->update([
+
+            } elseif ($statusCode === '200') {
+                $pembayaran->update([
                     'status_code'     => '200',
                     'settlement_time' => $out['settlement_time'] ?? null,
                     'status_message'  => $out['status_message']  ?? null,
                     'merchant_id'     => $out['merchant_id']     ?? null,
                 ]);
 
-                // Update status_bayar penyewaan
-                $parts    = explode('-', $p->order_id);
-                $noFaktur = $parts[0] . '-' . $parts[1];
-                Penyewaan::where('no_faktur', $noFaktur)->update(['status_bayar' => 'lunas']);
+                Penyewaan::where('no_faktur', $this->extractNoFaktur($pembayaran->order_id))
+                    ->update(['status_bayar' => 'lunas']);
+
                 $updated++;
             }
         }
