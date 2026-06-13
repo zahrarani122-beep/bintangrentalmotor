@@ -1009,27 +1009,26 @@ class PenyewaanResource extends Resource
                     ->label('Pelanggan')
 
                     ->searchable()
+                    ->sortable()
+                    ->placeholder('-'),
 
+                TextColumn::make('durasi_sewa')
+                    ->label('Durasi')
+                    ->suffix(' Hari')
                     ->sortable(),
 
 
 
                 TextColumn::make('tgl_sewa')
-
-                    ->label('Tgl Sewa')
-
-                    ->date('d/m/Y')
-
+                    ->label('Tanggal Sewa')
+                    ->date('d M Y')
                     ->sortable(),
 
 
 
                 TextColumn::make('tgl_kembali')
-
-                    ->label('Tgl Kembali')
-
-                    ->date('d/m/Y')
-
+                    ->label('Tanggal Kembali')
+                    ->date('d M Y')
                     ->sortable(),
 
 
@@ -1170,16 +1169,13 @@ class PenyewaanResource extends Resource
 
                     }),
 
-
-
-                Tables\Actions\ViewAction::make(),
-
-                Tables\Actions\EditAction::make(),
-
-                Tables\Actions\DeleteAction::make(),
-
             ])
 
+            /*
+            |--------------------------------------------------------------------------
+            | BUTTON UNDUH PDF
+            |--------------------------------------------------------------------------
+            */
             ->headerActions([
 
                 Action::make('downloadPdf')
@@ -1199,12 +1195,18 @@ class PenyewaanResource extends Resource
                         return response()->streamDownload(
 
                             fn () => print($pdf->output()),
-
-                            'penyewaan-list.pdf'
-
+                            'data-penyewaan.pdf'
                         );
 
                     }),
+
+            ])
+
+            ->actions([
+
+                Tables\Actions\EditAction::make(),
+
+                Tables\Actions\DeleteAction::make(),
 
             ])
 
@@ -1233,37 +1235,26 @@ class PenyewaanResource extends Resource
     public static function getRelations(): array
 
     {
-
-        return [];
-
+        return [
+            //
+        ];
     }
 
 
 
-    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
-
-    {
-
-        return parent::getEloquentQuery()->with(['pelanggan', 'penyewaanMotor.motor']);
-
-    }
-
-
-
+    /*
+    |--------------------------------------------------------------------------
+    | PAGES
+    |--------------------------------------------------------------------------
+    */
     public static function getPages(): array
 
     {
 
         return [
-
-            'index'  => Pages\ListPenyewaans::route('/'),
-
+            'index' => Pages\ListPenyewaans::route('/'),
             'create' => Pages\CreatePenyewaan::route('/create'),
-
-            'edit'   => Pages\EditPenyewaan::route('/{record}/edit'),
-
-            'view'   => Pages\ViewPenyewaan::route('/{record}'),
-
+            'edit' => Pages\EditPenyewaan::route('/{record}/edit'),
         ];
 
     }
