@@ -496,6 +496,7 @@ class PenyewaanResource extends Resource
     {
         return $table
             ->columns([
+
                 TextColumn::make('no_faktur')
                     ->label('No Faktur')
                     ->searchable()
@@ -504,33 +505,23 @@ class PenyewaanResource extends Resource
                 TextColumn::make('pelanggan.nama_pelanggan')
                     ->label('Pelanggan')
                     ->searchable()
+                    ->sortable()
+                    ->placeholder('-'),
+
+                TextColumn::make('durasi_sewa')
+                    ->label('Durasi')
+                    ->suffix(' Hari')
                     ->sortable(),
 
                 TextColumn::make('tgl_sewa')
-                    ->label('Tgl Sewa')
-                    ->date('d/m/Y')
+                    ->label('Tanggal Sewa')
+                    ->date('d M Y')
                     ->sortable(),
 
                 TextColumn::make('tgl_kembali')
-                    ->label('Tgl Kembali')
-                    ->date('d/m/Y')
+                    ->label('Tanggal Kembali')
+                    ->date('d M Y')
                     ->sortable(),
-
-                TextColumn::make('pembayaran.metode')
-                    ->label('Metode')
-                    ->badge()
-                    ->color(fn (?string $state): string => match ($state) {
-                        'tunai'    => 'info',
-                        'transfer' => 'warning',
-                        'midtrans' => 'primary',
-                        default    => 'gray',
-                    })
-                    ->formatStateUsing(fn (?string $state): string => match ($state) {
-                        'tunai'    => 'Tunai',
-                        'transfer' => 'Transfer',
-                        'midtrans' => 'Midtrans',
-                        default    => ucfirst($state ?? '-'),
-                    }),
 
                 TextColumn::make('total_harga')
                     ->label('Total')
@@ -585,11 +576,15 @@ class PenyewaanResource extends Resource
                         self::notif('Pembayaran Berhasil Ditandai Lunas!', 'success');
                     }),
 
-                Tables\Actions\ViewAction::make(),
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
             ])
+
+            /*
+            |--------------------------------------------------------------------------
+            | BUTTON UNDUH PDF
+            |--------------------------------------------------------------------------
+            */
             ->headerActions([
+
                 Action::make('downloadPdf')
                     ->label('Unduh PDF')
                     ->icon('heroicon-o-document-arrow-down')
@@ -599,14 +594,28 @@ class PenyewaanResource extends Resource
                         $pdf       = Pdf::loadView('pdf.penyewaan', compact('penyewaan'));
                         return response()->streamDownload(
                             fn () => print($pdf->output()),
-                            'penyewaan-list.pdf'
+                            'data-penyewaan.pdf'
                         );
                     }),
+
             ])
+
+            ->actions([
+
+                Tables\Actions\EditAction::make(),
+
+                Tables\Actions\DeleteAction::make(),
+
+            ])
+
             ->bulkActions([
+
                 Tables\Actions\BulkActionGroup::make([
+
                     Tables\Actions\DeleteBulkAction::make(),
+
                 ]),
+
             ]);
     }
 
@@ -616,21 +625,22 @@ class PenyewaanResource extends Resource
 
     public static function getRelations(): array
     {
-        return [];
+        return [
+            //
+        ];
     }
 
-    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
-    {
-        return parent::getEloquentQuery()->with(['pelanggan', 'penyewaanMotor.motor']);
-    }
-
+    /*
+    |--------------------------------------------------------------------------
+    | PAGES
+    |--------------------------------------------------------------------------
+    */
     public static function getPages(): array
     {
         return [
-            'index'  => Pages\ListPenyewaans::route('/'),
+            'index' => Pages\ListPenyewaans::route('/'),
             'create' => Pages\CreatePenyewaan::route('/create'),
-            'edit'   => Pages\EditPenyewaan::route('/{record}/edit'),
-            'view'   => Pages\ViewPenyewaan::route('/{record}'),
+            'edit' => Pages\EditPenyewaan::route('/{record}/edit'),
         ];
     }
 
