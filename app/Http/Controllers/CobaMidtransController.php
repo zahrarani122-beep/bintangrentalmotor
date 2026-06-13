@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Http\Controllers; 
+namespace App\Http\Controllers;
 
-use Illuminate\Http\Request; 
-use App\Models\Penyewaan; 
-use App\Models\Pembayaran; 
+use Illuminate\Http\Request;
+use App\Models\Penyewaan;
+use App\Models\Pembayaran;
 use App\Models\PenyewaanMotor;
 
 class CobaMidtransController extends Controller
@@ -13,9 +13,6 @@ class CobaMidtransController extends Controller
     // PRIVATE HELPERS
     // =========================================================================
 
-    /**
-     * Setup konfigurasi Midtrans.
-     */
     private function setupMidtrans(): void
     {
         \Midtrans\Config::$serverKey    = config('midtrans.server_key');
@@ -24,10 +21,6 @@ class CobaMidtransController extends Controller
         \Midtrans\Config::$is3ds        = true;
     }
 
-    /**
-     * Cek status order di Midtrans API.
-     * Return array hasil JSON dari Midtrans, atau null jika gagal.
-     */
     private function checkMidtransStatus(string $orderId): ?array
     {
         $url = 'https://api.sandbox.midtrans.com/v2/' . $orderId . '/status';
@@ -43,9 +36,6 @@ class CobaMidtransController extends Controller
         return json_decode($output, true) ?? null;
     }
 
-    /**
-     * Reset record pembayaran ke state awal (token expired/cancel/deny).
-     */
     private function resetPembayaran(Pembayaran $pembayaran): void
     {
         $pembayaran->update([
@@ -56,20 +46,12 @@ class CobaMidtransController extends Controller
         ]);
     }
 
-    /**
-     * Potong order_id menjadi no_faktur.
-     * Format order_id: S-0000001-20260511123456 → S-0000001
-     */
     private function extractNoFaktur(string $orderId): string
     {
         $parts = explode('-', $orderId);
         return ($parts[0] ?? '') . '-' . ($parts[1] ?? '');
     }
 
-    /**
-     * Cek & kembalikan snap token yang masih valid, atau null jika harus generate baru.
-     * Return array ['action' => 'reuse'|'reset'|'generate', 'snap_token' => ?string]
-     */
     private function resolveExistingToken(Pembayaran $pembayaran): array
     {
         if (! $pembayaran->transaction_id) {
@@ -80,31 +62,24 @@ class CobaMidtransController extends Controller
         $transactionStatus = $status['transaction_status'] ?? '';
         $statusCode        = $status['status_code']        ?? '';
 
-        // Sudah terbayar → jangan buka popup lagi
         if (in_array($transactionStatus, ['settlement', 'capture'])) {
-            // Pastikan status_bayar di DB ikut terupdate
             Penyewaan::where('no_faktur', $this->extractNoFaktur($pembayaran->order_id))
                 ->update(['status_bayar' => 'lunas']);
 
             return ['action' => 'paid'];
         }
 
-        // Expired / cancel / deny → generate token baru
         if (in_array($transactionStatus, ['expire', 'cancel', 'deny']) || $statusCode === '404') {
             $this->resetPembayaran($pembayaran);
             return ['action' => 'reset'];
         }
 
-        // Masih pending & belum expired → reuse token
         return [
             'action'     => 'reuse',
             'snap_token' => $pembayaran->transaction_id,
         ];
     }
 
-    /**
-     * Simpan / update record pembayaran setelah generate snap token.
-     */
     private function savePembayaran(Penyewaan $penyewaan, string $orderId, string $snapToken): void
     {
         Pembayaran::updateOrCreate(
@@ -123,9 +98,6 @@ class CobaMidtransController extends Controller
         );
     }
 
-    /**
-     * Susun params untuk Midtrans Snap::getSnapToken().
-     */
     private function buildSnapParams(Penyewaan $penyewaan, string $orderId): array
     {
         $itemDetails = $penyewaan->penyewaanMotor->map(fn ($d) => [
@@ -160,10 +132,6 @@ class CobaMidtransController extends Controller
     // PUBLIC METHODS
     // =========================================================================
 
-    /**
-     * Generate Snap Token untuk penyewaan tertentu.
-     * Dipanggil via route binding (bukan dari wizard Filament).
-     */
     public function getSnapTokenBySewa(Penyewaan $penyewaan): array
     {
         $penyewaan->load(['pelanggan', 'penyewaanMotor.motor']);
@@ -183,7 +151,6 @@ class CobaMidtransController extends Controller
             }
         }
 
-        // Generate snap token baru
         $orderId = $penyewaan->no_faktur . '-' . date('YmdHis');
         $params  = $this->buildSnapParams($penyewaan, $orderId);
 
@@ -198,10 +165,6 @@ class CobaMidtransController extends Controller
         }
     }
 
-    /**
-     * Generate Snap Token via fetch() dari Step 3 wizard Filament.
-     * POST /midtrans/snap-token
-     */
     public function getSnapToken(Request $request)
     {
         $noFaktur = $request->input('no_faktur');
@@ -241,7 +204,6 @@ class CobaMidtransController extends Controller
             }
         }
 
-        // Generate snap token baru
         $orderId = $noFaktur . '-' . date('YmdHis');
         $params  = $this->buildSnapParams($penyewaan, $orderId);
 
@@ -262,16 +224,11 @@ class CobaMidtransController extends Controller
         }
     }
 
-    /**
-     * Webhook callback dari Midtrans (Notification URL).
-     * POST /api/midtrans/callback  (di routes/api.php, bebas CSRF)
-     */
     public function handleCallback(Request $request)
     {
         \Midtrans\Config::$serverKey    = config('midtrans.server_key');
         \Midtrans\Config::$isProduction = config('midtrans.is_production', false);
 
-        // 1. Validasi signature key
         $hashed = hash('sha512',
             $request->order_id
             . $request->status_code
@@ -289,7 +246,6 @@ class CobaMidtransController extends Controller
         $statusCode        = $request->status_code;
         $noFaktur          = $this->extractNoFaktur($orderId);
 
-        // 2. Update tabel pembayaran
         Pembayaran::where('order_id', $orderId)->update([
             'status_code'      => $statusCode                  ?? null,
             'transaction_time' => $request->transaction_time   ?? null,
@@ -298,13 +254,11 @@ class CobaMidtransController extends Controller
             'merchant_id'      => $request->merchant_id        ?? null,
         ]);
 
-        // 3. Settlement → tandai lunas
         if ($statusCode === '200') {
             Penyewaan::where('no_faktur', $noFaktur)
                 ->update(['status_bayar' => 'lunas']);
         }
 
-        // 4. Expired / cancel / deny → reset pembayaran
         if (in_array($transactionStatus, ['expire', 'cancel', 'deny'])) {
             $pembayaran = Pembayaran::where('order_id', $orderId)->first();
             if ($pembayaran) {
@@ -315,10 +269,6 @@ class CobaMidtransController extends Controller
         return response()->json(['message' => 'OK']);
     }
 
-    /**
-     * Sync status pembayaran pending secara manual.
-     * GET /midtrans/cek-status
-     */
     public function cekStatus()
     {
         \Midtrans\Config::$serverKey    = config('midtrans.server_key');
