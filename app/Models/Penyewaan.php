@@ -78,14 +78,6 @@ class Penyewaan extends Model
         );
     }
 
-    /**
-     * Relasi ke pengembalian
-     */
-    public function pengembalian()
-    {
-        return $this->hasOne(Pengembalian::class, 'id_sewa', 'id_sewa');
-    }
-
     public function pembayaran()
 {
     return $this->hasOne(Pembayaran::class, 'penyewaan_id', 'id_sewa');
