@@ -20,11 +20,7 @@ class CreatePengembalian extends CreateRecord
             'penyewaan.penyewaanMotor.motor',
         ]);
 
-        /*
-        |--------------------------------------------------------------------------
-        | 1. Ubah status motor menjadi tersedia
-        |--------------------------------------------------------------------------
-        */
+        //status motor setelah pengembalian
         if ($pengembalian->penyewaan && $pengembalian->penyewaan->penyewaanMotor) {
             foreach ($pengembalian->penyewaan->penyewaanMotor as $detail) {
                 if ($detail->motor) {
@@ -35,11 +31,8 @@ class CreatePengembalian extends CreateRecord
             }
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | 2. Kirim notifikasi WhatsApp pengembalian
-        |--------------------------------------------------------------------------
-        */
+        //notif pengembalian
+
         $penyewaan = $pengembalian->penyewaan;
         $pelanggan = $penyewaan?->pelanggan;
 
@@ -98,11 +91,7 @@ class CreatePengembalian extends CreateRecord
             $detailDenda = json_decode($detailDenda, true) ?? [];
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | 3. Susun isi pesan WhatsApp
-        |--------------------------------------------------------------------------
-        */
+        //susunan isi whatsapp
         $pesan = "Halo {$namaPelanggan},\n\n";
         $pesan .= "Pengembalian motor Anda di Bintang Rental Motor telah berhasil diproses.\n\n";
 
@@ -134,11 +123,8 @@ class CreatePengembalian extends CreateRecord
         $pesan .= "Keterangan : {$keterangan}\n\n";
         $pesan .= "Terima kasih telah menggunakan layanan Bintang Rental Motor.";
 
-        /*
-        |--------------------------------------------------------------------------
-        | 4. Kirim pesan melalui Fonnte
-        |--------------------------------------------------------------------------
-        */
+        //kirim pesan melalui fonnte
+        
         $fonnteService = app(FonnteService::class);
         $proses = $fonnteService->sendMessage($nomorTujuan, $pesan);
 

@@ -12,18 +12,16 @@ use Filament\Forms\Set;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Filament\Tables\Actions\Action;
 
 class PengembalianResource extends Resource
 {
     protected static ?string $model = Pengembalian::class;
-
     protected static ?string $navigationIcon = 'heroicon-o-arrow-uturn-left';
-
     protected static ?string $navigationLabel = 'Pengembalian';
-
     protected static ?string $pluralModelLabel = 'Pengembalian';
-
     protected static ?string $navigationGroup = 'Transaksi';
+    protected static ?int $navigationSort = 2;
 
     public static function form(Form $form): Form
     {
@@ -32,7 +30,8 @@ class PengembalianResource extends Resource
 
                 Forms\Components\Wizard::make([
 
-                    //data penyewaan
+                    //STEP 1
+
                     Forms\Components\Wizard\Step::make('Data Penyewaan')
                         ->schema([
 
@@ -113,11 +112,11 @@ class PengembalianResource extends Resource
                                         ->content(function (Get $get) {
                                             $penyewaan = self::ambilPenyewaan($get('id_sewa'));
 
-                                            if (!$penyewaan) {
+                                            if (! $penyewaan) {
                                                 return '-';
                                             }
 
-                                            return $penyewaan->durasi_sewa . ' Hari';
+                                            return ($penyewaan->durasi_sewa ?? 0) . ' Hari';
                                         }),
 
                                 ])
@@ -125,11 +124,7 @@ class PengembalianResource extends Resource
 
                         ]),
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | STEP 2: INPUT DENDA
-                    |--------------------------------------------------------------------------
-                    */
+                    //STEP 2
                     Forms\Components\Wizard\Step::make('Input Denda')
                         ->schema([
 
@@ -236,11 +231,7 @@ class PengembalianResource extends Resource
 
                         ]),
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | STEP 3: KONFIRMASI
-                    |--------------------------------------------------------------------------
-                    */
+                    //STEP 3
                     Forms\Components\Wizard\Step::make('Konfirmasi')
                         ->schema([
 
@@ -289,11 +280,11 @@ class PengembalianResource extends Resource
                                         ->content(function (Get $get) {
                                             $penyewaan = self::ambilPenyewaan($get('id_sewa'));
 
-                                            if (!$penyewaan) {
+                                            if (! $penyewaan) {
                                                 return '-';
                                             }
 
-                                            return $penyewaan->durasi_sewa . ' Hari';
+                                            return ($penyewaan->durasi_sewa ?? 0) . ' Hari';
                                         }),
 
                                 ])
@@ -363,6 +354,7 @@ class PengembalianResource extends Resource
             ]);
     }
 
+    //TABLE
     public static function table(Table $table): Table
     {
         return $table
@@ -431,6 +423,38 @@ class PengembalianResource extends Resource
                     ]),
 
             ])
+
+            //PDF
+            ->headerActions([
+
+                Action::make('downloadPdf')
+                    ->label('Unduh PDF')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->color('success')
+                    ->action(function () {
+                        $pengembalian = Pengembalian::with([
+                            'penyewaan.pelanggan',
+                            'penyewaan.penyewaanMotor.motor',
+                        ])
+                            ->orderByDesc('id_pengembalian')
+                            ->get();
+
+                        $pdf = app('dompdf.wrapper');
+
+                        $pdf->loadView('pdf.pengembalian', [
+                            'pengembalian' => $pengembalian,
+                        ]);
+
+                        $pdf->setPaper('a4', 'landscape');
+
+                        return response()->streamDownload(
+                            fn () => print($pdf->output()),
+                            'data-pengembalian.pdf'
+                        );
+                    }),
+
+            ])
+
             ->actions([
 
                 Tables\Actions\EditAction::make(),
@@ -465,9 +489,10 @@ class PengembalianResource extends Resource
         ];
     }
 
+    //HELPER
     protected static function ambilPenyewaan($idSewa): ?Penyewaan
     {
-        if (!$idSewa) {
+        if (! $idSewa) {
             return null;
         }
 

@@ -3,15 +3,15 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\PenyewaanResource\Pages;
+use App\Models\Motor;
+use App\Models\Pelanggan;
 use App\Models\Penyewaan;
-
-use Filament\Forms;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-
-// Filament Components
 use Filament\Forms\Components\Wizard;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\DatePicker;
@@ -20,497 +20,477 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Section;
-use Filament\Forms\Components\TextArea;
 use Filament\Forms\Components\FileUpload;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Filters\SelectFilter;
-
-use Filament\Forms\Get;
-use Filament\Forms\Set;
-
-// Models
-use App\Models\Pelanggan;
-use App\Models\Motor;
-use App\Models\PenyewaanMotor;
-
-// DB
-use Illuminate\Support\Facades\DB;
-
-// tambahan untuk tombol action
 use Filament\Tables\Actions\Action;
-
 
 class PenyewaanResource extends Resource
 {
     protected static ?string $model = Penyewaan::class;
 
-    protected static ?string $navigationIcon  = 'heroicon-o-truck';
+    protected static ?string $navigationIcon = 'heroicon-o-truck';
 
     protected static ?string $navigationLabel = 'Penyewaan';
 
     protected static ?string $navigationGroup = 'Transaksi';
+
+    protected static ?int $navigationSort = 1;
+
     public static function form(Form $form): Form
-{
-    return $form
-        ->schema([
+    {
+        return $form
+            ->schema([
 
-            Wizard::make([
+                Wizard::make([
 
-                /*
-                |--------------------------------------------------------------------------
-                | STEP 1 : DATA PELANGGAN
-                |--------------------------------------------------------------------------
-                */
-                Wizard\Step::make('Data Pelanggan')
-                    ->schema([
+                    /*
+                    |--------------------------------------------------------------------------
+                    | STEP 1: DATA PELANGGAN
+                    |--------------------------------------------------------------------------
+                    */
+                    Wizard\Step::make('Data Pelanggan')
+                        ->schema([
 
-                        Section::make('Informasi Penyewa')
-                            ->schema([
+                            Section::make('Informasi Penyewa')
+                                ->schema([
 
-                                TextInput::make('no_faktur')
-                                    ->label('No Faktur')
-                                    ->default(
-                                        fn () => Penyewaan::getKodeFaktur()
-                                    )
-                                    ->readonly()
-                                    ->required(),
+                                    TextInput::make('no_faktur')
+                                        ->label('No Faktur')
+                                        ->default(fn () => Penyewaan::getKodeFaktur())
+                                        ->readOnly()
+                                        ->required(),
 
-                                Select::make('pelanggan_id')
-                                    ->label('Pelanggan')
-                                    ->options(
-                                        Pelanggan::pluck(
-                                            'nama_pelanggan',
-                                            'id'
-                                        )->toArray()
-                                    )
-                                    ->searchable()
-                                    ->required(),
-
-                                TextInput::make('durasi_sewa')
-                                    ->label('Durasi Sewa')
-                                    ->numeric()
-                                    ->suffix('Hari')
-                                    ->required(),
-
-                                DatePicker::make('tgl_sewa')
-                                    ->label('Tanggal Sewa')
-                                    ->default(now())
-                                    ->required(),
-
-                                DatePicker::make('tgl_kembali')
-                                    ->label('Tanggal Kembali')
-                                    ->required(),
-
-                            ])
-                            ->columns(2)
-
-                    ]),
-
-                /*
-                |--------------------------------------------------------------------------
-                | STEP 2 : DATA MOTOR
-                |--------------------------------------------------------------------------
-                */
-                Wizard\Step::make('Data Motor')
-                    ->schema([
-
-                        Repeater::make('items')
-                            ->relationship('penyewaanMotor')
-                            ->schema([
-
-                                Select::make('motor_id')
-                                    ->label('Motor')
-                                    ->options(
-                                        Motor::where(
-                                            'status',
-                                            'tersedia'
+                                    Select::make('pelanggan_id')
+                                        ->label('Pelanggan')
+                                        ->options(fn () =>
+                                            Pelanggan::query()
+                                                ->pluck('nama_pelanggan', 'id')
+                                                ->toArray()
                                         )
-                                        ->pluck(
-                                            'nama_motor',
-                                            'id'
+                                        ->searchable()
+                                        ->preload()
+                                        ->required()
+                                        ->native(false),
+
+                                    TextInput::make('durasi_sewa')
+                                        ->label('Durasi Sewa')
+                                        ->numeric()
+                                        ->suffix('Hari')
+                                        ->default(1)
+                                        ->minValue(1)
+                                        ->required(),
+
+                                    DatePicker::make('tgl_sewa')
+                                        ->label('Tanggal Sewa')
+                                        ->default(now())
+                                        ->required(),
+
+                                    DatePicker::make('tgl_kembali')
+                                        ->label('Tanggal Kembali')
+                                        ->required(),
+
+                                ])
+                                ->columns(2),
+
+                        ]),
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | STEP 2: DATA MOTOR
+                    |--------------------------------------------------------------------------
+                    */
+                    Wizard\Step::make('Data Motor')
+                        ->schema([
+
+                            Repeater::make('items')
+                                ->relationship('penyewaanMotor')
+                                ->label('Daftar Motor')
+                                ->schema([
+
+                                    Select::make('motor_id')
+                                        ->label('Motor')
+                                        ->options(fn () =>
+                                            Motor::query()
+                                                ->where('status', 'tersedia')
+                                                ->pluck('nama_motor', 'id')
+                                                ->toArray()
                                         )
-                                        ->toArray()
-                                    )
-                                    ->searchable()
-                                    ->required()
-                                    ->reactive()
-                                    ->disableOptionsWhenSelectedInSiblingRepeaterItems()
-                                    ->afterStateUpdated(function (
-                                        $state,
-                                        $set,
-                                        $get
-                                    ) {
+                                        ->searchable()
+                                        ->preload()
+                                        ->required()
+                                        ->native(false)
+                                        ->reactive()
+                                        ->disableOptionsWhenSelectedInSiblingRepeaterItems()
+                                        ->afterStateUpdated(function ($state, $set, $get) {
+                                            $motor = Motor::find($state);
 
-                                        $motor = Motor::find($state);
+                                            $harga = $motor
+                                                ? (float) $motor->harga_sewa_perhari
+                                                : 0;
 
-                                        $harga = $motor
-                                            ? $motor->harga_sewa_perhari
-                                            : 0;
+                                            $jml = (int) ($get('jml') ?? 1);
 
-                                        $jml = $get('jml') ?? 1;
+                                            $set('harga_sewa', $harga);
+                                            $set('subtotal', $harga * $jml);
+                                        }),
 
-                                        $set(
-                                            'harga_sewa',
-                                            $harga
-                                        );
-
-                                        $set(
-                                            'subtotal',
-                                            $harga * $jml
-                                        );
-                                    }),
-
-                                TextInput::make('harga_sewa')
-                                    ->label('Harga Sewa / Hari')
-                                    ->numeric()
-                                    ->readonly()
-                                    ->dehydrated(),
-
-                                TextInput::make('jml')
-                                    ->label('Jumlah')
-                                    ->default(1)
-                                    ->numeric()
-                                    ->required()
-                                    ->live()
-                                    ->afterStateUpdated(function (
-                                        $state,
-                                        $get,
-                                        $set
-                                    ) {
-
-                                        $harga =
-                                            $get('harga_sewa') ?? 0;
-
-                                        $set(
-                                            'subtotal',
-                                            $harga * $state
-                                        );
-                                    }),
-
-                                DatePicker::make('tgl')
-                                    ->label('Tanggal')
-                                    ->default(today())
-                                    ->required(),
-
-                                TextInput::make('subtotal')
-                                    ->label('Subtotal')
-                                    ->numeric()
-                                    ->readonly()
-                                    ->dehydrated()
-                                    ->default(0),
-
-                            ])
-                            ->columns(2)
-                            ->addable()
-                            ->deletable()
-                            ->reorderable()
-                            ->createItemButtonLabel('Tambah Motor')
-                            ->minItems(1)
-                            ->required(),
-
-                    ]),
-
-                /*
-                |--------------------------------------------------------------------------
-                | STEP 3 : DETAIL SEWA
-                |--------------------------------------------------------------------------
-                */
-                Wizard\Step::make('Detail Sewa')
-                    ->schema([
-
-    $set('harga_sewa_perhari', $harga);
-                        Section::make('Data Pelanggan')
-                            ->schema([
-
-                                Placeholder::make('detail_pelanggan')
-                                    ->label('Nama Pelanggan')
-                                    ->content(function (Get $get) {
-
-                                    TextInput::make('harga_sewa_perhari')
+                                    TextInput::make('harga_sewa')
                                         ->label('Harga Sewa / Hari')
                                         ->numeric()
-                                        ->readonly()
-                                        ->dehydrated(),
-                                        $pelanggan =
-                                            Pelanggan::find(
-                                                $get('pelanggan_id')
-                                            );
+                                        ->prefix('Rp')
+                                        ->readOnly()
+                                        ->dehydrated()
+                                        ->default(0),
 
-                                        return $pelanggan
-                                            ? $pelanggan->nama_pelanggan
-                                            : '-';
-                                    }),
+                                    TextInput::make('jml')
+                                        ->label('Jumlah / Durasi')
+                                        ->default(1)
+                                        ->numeric()
+                                        ->minValue(1)
+                                        ->required()
+                                        ->live()
+                                        ->afterStateUpdated(function ($state, $get, $set) {
+                                            $harga = (float) ($get('harga_sewa') ?? 0);
+                                            $jumlah = (int) ($state ?? 1);
 
-                                Placeholder::make('detail_durasi')
-                                    ->label('Durasi')
-                                    ->content(fn (Get $get) =>
+                                            $set('subtotal', $harga * $jumlah);
+                                        }),
 
-                                        ($get('durasi_sewa') ?? 0)
-                                        . ' Hari'
+                                    DatePicker::make('tgl')
+                                        ->label('Tanggal')
+                                        ->default(today())
+                                        ->required(),
 
-                                    ),
+                                    TextInput::make('subtotal')
+                                        ->label('Subtotal')
+                                        ->numeric()
+                                        ->prefix('Rp')
+                                        ->readOnly()
+                                        ->dehydrated()
+                                        ->default(0),
 
-                                Placeholder::make('detail_tanggal')
-                                    ->label('Tanggal')
-                                    ->content(fn (Get $get) =>
+                                ])
+                                ->columns(2)
+                                ->addable()
+                                ->deletable()
+                                ->reorderable()
+                                ->addActionLabel('Tambah Motor')
+                                ->minItems(1)
+                                ->required(),
 
-                                        ($get('tgl_sewa') ?? '-')
-                                        . ' s/d ' .
-                                        ($get('tgl_kembali') ?? '-')
+                        ]),
 
-                                    ),
+                    /*
+                    |--------------------------------------------------------------------------
+                    | STEP 3: DETAIL SEWA
+                    |--------------------------------------------------------------------------
+                    */
+                    Wizard\Step::make('Detail Sewa')
+                        ->schema([
 
-                            ])
-                            ->columns(3),
+                            Section::make('Data Pelanggan')
+                                ->schema([
 
-                        Section::make('Motor Yang Disewa')
-                            ->schema([
+                                    Placeholder::make('detail_pelanggan')
+                                        ->label('Nama Pelanggan')
+                                        ->content(function (Get $get) {
+                                            $pelanggan = Pelanggan::find($get('pelanggan_id'));
 
-                                Placeholder::make('detail_motor')
-                                    ->content(function (Get $get) {
+                                            return $pelanggan
+                                                ? $pelanggan->nama_pelanggan
+                                                : '-';
+                                        }),
 
-                                        $items = $get('items');
+                                    Placeholder::make('detail_durasi')
+                                        ->label('Durasi')
+                                        ->content(fn (Get $get) =>
+                                            ($get('durasi_sewa') ?? 0) . ' Hari'
+                                        ),
 
-                                        if (!$items) {
-                                            return 'Belum ada motor dipilih';
-                                        }
+                                    Placeholder::make('detail_tanggal')
+                                        ->label('Tanggal')
+                                        ->content(fn (Get $get) =>
+                                            ($get('tgl_sewa') ?? '-') . ' s/d ' . ($get('tgl_kembali') ?? '-')
+                                        ),
 
-                                        $output = '';
+                                ])
+                                ->columns(3),
 
-                                        foreach ($items as $item) {
+                            Section::make('Motor Yang Disewa')
+                                ->schema([
 
-                                            $motor = Motor::find(
-                                                $item['motor_id']
-                                            );
+                                    Placeholder::make('detail_motor')
+                                        ->label('Detail Motor')
+                                        ->content(function (Get $get) {
+                                            $items = $get('items') ?? [];
 
-                                            if ($motor) {
-
-                                                $output .=
-                                                    "Motor : "
-                                                    . $motor->nama_motor .
-
-                                                    " | Harga : Rp "
-                                                    . number_format(
-                                                        $item['harga_sewa'],
-                                                        0,
-                                                        ',',
-                                                        '.'
-                                                    )
-
-                                                    . " | Qty : "
-                                                    . $item['jml']
-
-                                                    . " | Subtotal : Rp "
-                                                    . number_format(
-                                                        $item['subtotal'],
-                                                        0,
-                                                        ',',
-                                                        '.'
-                                                    )
-
-                                                    . "\n";
+                                            if (empty($items)) {
+                                                return 'Belum ada motor dipilih';
                                             }
-                                        }
 
-                                        return $output;
-                                    }),
-
-                            ]),
-
-                        Section::make('Grand Total')
-                            ->schema([
-
-                                Placeholder::make('grand_total')
-                                    ->label('Total Penyewaan')
-                                    ->content(function (Get $get) {
-
-                                        $items = $get('items');
-
-                                        $total = 0;
-
-                                        if ($items) {
+                                            $output = '';
 
                                             foreach ($items as $item) {
+                                                $motor = Motor::find($item['motor_id'] ?? null);
 
-                                                $total +=
-                                                    $item['subtotal']
-                                                    ?? 0;
+                                                if ($motor) {
+                                                    $output .=
+                                                        'Motor : ' . $motor->nama_motor .
+                                                        ' | Harga : Rp ' . number_format((float) ($item['harga_sewa'] ?? 0), 0, ',', '.') .
+                                                        ' | Qty : ' . ($item['jml'] ?? 0) .
+                                                        ' | Subtotal : Rp ' . number_format((float) ($item['subtotal'] ?? 0), 0, ',', '.') .
+                                                        "\n";
+                                                }
                                             }
-                                        }
 
-                                        return 'Rp ' .
-                                            number_format(
-                                                $total,
-                                                0,
-                                                ',',
-                                                '.'
-                                            );
-                                    }),
+                                            return $output ?: 'Belum ada motor dipilih';
+                                        }),
 
-                            ])
+                                ]),
 
-                    ]),
+                            Section::make('Grand Total')
+                                ->schema([
 
-                /*
-                |--------------------------------------------------------------------------
-                | STEP 4 : PEMBAYARAN
-                |--------------------------------------------------------------------------
-                */
-                Wizard\Step::make('Pembayaran')
-                    ->schema([
+                                    Placeholder::make('grand_total')
+                                        ->label('Total Penyewaan')
+                                        ->content(function (Get $get) {
+                                            $items = $get('items') ?? [];
 
-                        Section::make('Data Pembayaran')
-                            ->schema([
+                                            $total = self::hitungGrandTotal($items);
 
-                                DatePicker::make('tgl_bayar')
-                                    ->label('Tanggal Bayar')
-                                    ->default(now())
-                                    ->required(),
+                                            return 'Rp ' . number_format($total, 0, ',', '.');
+                                        }),
 
-                                Select::make('metode')
-                                    ->label('Metode Pembayaran')
-                                    ->options([
-                                        'cash' => 'Cash',
-                                        'transfer' => 'Transfer',
-                                        'qris' => 'QRIS',
-                                    ])
-                                    ->required(),
+                                ]),
 
-                                TextInput::make('total_harga')
-    ->label('Total Bayar')
-    ->numeric()
-    ->readOnly()
-    ->dehydrated()
-    ->formatStateUsing(function (Get $get) {
+                        ]),
 
-        $items = $get('items');
+                    /*
+                    |--------------------------------------------------------------------------
+                    | STEP 4: PEMBAYARAN
+                    |--------------------------------------------------------------------------
+                    */
+                    Wizard\Step::make('Pembayaran')
+                        ->schema([
 
-        $total = 0;
+                            Section::make('Data Pembayaran')
+                                ->schema([
 
-        if ($items) {
+                                    DatePicker::make('tgl_bayar')
+                                        ->label('Tanggal Bayar')
+                                        ->default(now())
+                                        ->required(),
 
-            foreach ($items as $item) {
+                                    Select::make('metode')
+                                        ->label('Metode Pembayaran')
+                                        ->options([
+                                            'cash' => 'Cash',
+                                            'transfer' => 'Transfer',
+                                            'qris' => 'QRIS',
+                                        ])
+                                        ->required()
+                                        ->native(false),
 
-                $total += $item['subtotal'] ?? 0;
-            }
-        }
+                                    TextInput::make('total_harga')
+                                        ->label('Total Bayar')
+                                        ->numeric()
+                                        ->prefix('Rp')
+                                        ->readOnly()
+                                        ->dehydrated()
+                                        ->default(0)
+                                        ->formatStateUsing(function ($state, Get $get) {
+                                            $items = $get('items') ?? [];
 
-        return $total;
-    }),
-                                FileUpload::make('bukti_bayar')
-                                    ->label('Bukti Bayar')
-                                    ->directory('bukti-pembayaran')
-                                    ->image()
-                                    ->nullable(),
+                                            return self::hitungGrandTotal($items);
+                                        })
+                                        ->dehydrateStateUsing(function ($state, Get $get) {
+                                            $items = $get('items') ?? [];
 
-                                TextInput::make('order_id')
-                                    ->default(fn (Get $get) =>
-                                        $get('no_faktur')
-                                    )
-                                    ->readonly(),
+                                            return self::hitungGrandTotal($items);
+                                        }),
 
-                                TextInput::make('payment_type')
-                                    ->default('manual'),
+                                    FileUpload::make('bukti_bayar')
+                                        ->label('Bukti Bayar')
+                                        ->directory('bukti-pembayaran')
+                                        ->image()
+                                        ->nullable(),
 
-                                TextInput::make('status_code')
-                                    ->default('200'),
+                                    TextInput::make('order_id')
+                                        ->label('Order ID')
+                                        ->default(fn (Get $get) => $get('no_faktur'))
+                                        ->readOnly(),
 
-                                TextInput::make('transaction_id')
-                                    ->default(fn () => uniqid()),
+                                    TextInput::make('payment_type')
+                                        ->label('Payment Type')
+                                        ->default('manual'),
 
-                                DateTimePicker::make('transaction_time')
-                                    ->default(now()),
+                                    TextInput::make('status_code')
+                                        ->label('Status Code')
+                                        ->default('200'),
 
-                                DateTimePicker::make('settlement_time')
-                                    ->default(now()),
+                                    TextInput::make('transaction_id')
+                                        ->label('Transaction ID')
+                                        ->default(fn () => uniqid()),
 
-                                TextInput::make('status_message')
-                                    ->default('Pembayaran Berhasil'),
+                                    DateTimePicker::make('transaction_time')
+                                        ->label('Transaction Time')
+                                        ->default(now()),
 
-                                TextInput::make('merchant_id')
-                                    ->default('RENTAL-MOTOR'),
+                                    DateTimePicker::make('settlement_time')
+                                        ->label('Settlement Time')
+                                        ->default(now()),
 
-                            ])
-                            ->columns(2)
+                                    TextInput::make('status_message')
+                                        ->label('Status Message')
+                                        ->default('Pembayaran Berhasil'),
 
-                    ]),
+                                    TextInput::make('merchant_id')
+                                        ->label('Merchant ID')
+                                        ->default('RENTAL-MOTOR'),
 
-                        ])
-            ->columnSpanFull()
+                                ])
+                                ->columns(2),
 
-        ]);
-}
+                        ]),
 
-/*
-|--------------------------------------------------------------------------
-| TABLE
-|--------------------------------------------------------------------------
-*/
-public static function table(Table $table): Table
-{
-    return $table
-        ->columns([
+                ])
+                    ->columnSpanFull(),
 
-            TextColumn::make('no_faktur')
-                ->label('No Faktur')
-                ->searchable(),
+            ]);
+    }
 
-            TextColumn::make('pelanggan.nama_pelanggan')
-                ->label('Pelanggan')
-                ->searchable(),
+    /*
+    |--------------------------------------------------------------------------
+    | TABLE
+    |--------------------------------------------------------------------------
+    */
+    public static function table(Table $table): Table
+    {
+        return $table
+            ->columns([
 
-            TextColumn::make('durasi_sewa')
-                ->label('Durasi')
-                ->suffix(' Hari'),
+                TextColumn::make('no_faktur')
+                    ->label('No Faktur')
+                    ->searchable()
+                    ->sortable(),
 
-            TextColumn::make('tgl_sewa')
-                ->date(),
+                TextColumn::make('pelanggan.nama_pelanggan')
+                    ->label('Pelanggan')
+                    ->searchable()
+                    ->sortable()
+                    ->placeholder('-'),
 
-            TextColumn::make('tgl_kembali')
-                ->date(),
+                TextColumn::make('durasi_sewa')
+                    ->label('Durasi')
+                    ->suffix(' Hari')
+                    ->sortable(),
 
-        ])
-        ->actions([
+                TextColumn::make('tgl_sewa')
+                    ->label('Tanggal Sewa')
+                    ->date('d M Y')
+                    ->sortable(),
 
-            Tables\Actions\ViewAction::make(),
-            Tables\Actions\EditAction::make(),
-            Tables\Actions\DeleteAction::make(),
+                TextColumn::make('tgl_kembali')
+                    ->label('Tanggal Kembali')
+                    ->date('d M Y')
+                    ->sortable(),
 
-        ])
-        ->bulkActions([
-
-            Tables\Actions\BulkActionGroup::make([
-
-                Tables\Actions\DeleteBulkAction::make(),
+                TextColumn::make('total_harga')
+                    ->label('Total')
+                    ->formatStateUsing(fn ($state) =>
+                        'Rp ' . number_format((float) ($state ?? 0), 0, ',', '.')
+                    )
+                    ->sortable(),
 
             ])
 
-        ]);
-}
+            /*
+            |--------------------------------------------------------------------------
+            | BUTTON UNDUH PDF
+            |--------------------------------------------------------------------------
+            */
+            ->headerActions([
 
-/*
-|--------------------------------------------------------------------------
-| RELATIONS
-|--------------------------------------------------------------------------
-*/
-public static function getRelations(): array
-{
-    return [
-        //
-    ];
-}
+                Action::make('downloadPdf')
+                    ->label('Unduh PDF')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->color('success')
+                    ->action(function () {
+                        $penyewaan = Penyewaan::with([
+                            'pelanggan',
+                            'penyewaanMotor.motor',
+                        ])->get();
 
-/*
-|--------------------------------------------------------------------------
-| PAGES
-|--------------------------------------------------------------------------
-*/
-public static function getPages(): array
-{
-    return [
-        'index' => Pages\ListPenyewaans::route('/'),
-        'create' => Pages\CreatePenyewaan::route('/create'),
-        'edit' => Pages\EditPenyewaan::route('/{record}/edit'),
-    ];
-}
+                        $pdf = Pdf::loadView('pdf.penyewaan', [
+                            'penyewaan' => $penyewaan,
+                        ])->setPaper('a4', 'landscape');
+
+                        return response()->streamDownload(
+                            fn () => print($pdf->output()),
+                            'data-penyewaan.pdf'
+                        );
+                    }),
+
+            ])
+
+            ->actions([
+
+                Tables\Actions\EditAction::make(),
+
+                Tables\Actions\DeleteAction::make(),
+
+            ])
+
+            ->bulkActions([
+
+                Tables\Actions\BulkActionGroup::make([
+
+                    Tables\Actions\DeleteBulkAction::make(),
+
+                ]),
+
+            ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | RELATIONS
+    |--------------------------------------------------------------------------
+    */
+    public static function getRelations(): array
+    {
+        return [
+            //
+        ];
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | PAGES
+    |--------------------------------------------------------------------------
+    */
+    public static function getPages(): array
+    {
+        return [
+            'index' => Pages\ListPenyewaans::route('/'),
+            'create' => Pages\CreatePenyewaan::route('/create'),
+            'edit' => Pages\EditPenyewaan::route('/{record}/edit'),
+        ];
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | HELPER
+    |--------------------------------------------------------------------------
+    */
+    protected static function hitungGrandTotal(array $items): int
+    {
+        $total = 0;
+
+        foreach ($items as $item) {
+            $total += (int) ($item['subtotal'] ?? 0);
+        }
+
+        return $total;
+    }
 }

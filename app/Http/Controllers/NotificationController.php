@@ -35,6 +35,7 @@ class NotificationController extends Controller
         ], 500);
     }
 
+    // KATA KATA UNTUK PENGEMBALIAN
     public function kirimNotifikasiPengembalian($id_pengembalian)
     {
         $pengembalian = Pengembalian::with('penyewaan.pelanggan')
