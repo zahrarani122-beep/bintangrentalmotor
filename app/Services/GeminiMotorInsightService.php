@@ -59,7 +59,17 @@ class GeminiMotorInsightService
                 ],
             ]);
 
-        $response->throw();
+        if ($response->status() === 429) {
+            throw new \RuntimeException(
+                'Kuota Gemini API sudah habis atau terkena rate limit. Coba tunggu beberapa saat, gunakan API key lain, atau cek plan/billing di Google AI Studio.'
+            );
+        }
+
+        if ($response->failed()) {
+            $message = $response->json('error.message') ?? Str::limit($response->body(), 160);
+
+            throw new \RuntimeException('Gemini API gagal: ' . $message);
+        }
 
         $rawResponse = $response->json();
         $text = data_get($rawResponse, 'candidates.0.content.parts.0.text');
