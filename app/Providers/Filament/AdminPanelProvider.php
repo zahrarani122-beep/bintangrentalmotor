@@ -60,6 +60,8 @@ class AdminPanelProvider extends PanelProvider
                 // \App\Filament\Widgets\PersentasePenjualanBarangChart::class,
                 //// tambahan untuk total penjualan per pembeli tahun ini
                 //\App\Filament\Widgets\TotalPenjualanPerPembeliChart::class,
+                // tambahan untuk total debit vs kredit per bulan
+                \App\Filament\Widgets\JurnalChartWidget::class,
             ])
             ->middleware([
                 EncryptCookies::class,
