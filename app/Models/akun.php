@@ -18,4 +18,10 @@ class Akun extends Model
     {
         return $this->hasMany(PencatatanBiaya::class, 'akun_id', 'id');
     }
+
+    // relasi 1-n dengan jurnal_detail
+    public function journalDetail()
+    {
+        return $this->hasMany(JurnalDetail::class);
+    }
 }
